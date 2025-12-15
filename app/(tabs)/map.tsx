@@ -140,7 +140,10 @@ export default function MapScreen() {
       {
         text: "Delete",
         style: "destructive",
-        onPress: () => persist(hazards.filter((h) => h.id !== id)),
+        onPress: () => {
+          persist(hazards.filter((h) => h.id !== id));
+          trackEvent("hazard_delete", { id });
+        },
       },
     ]);
   }
@@ -161,13 +164,16 @@ export default function MapScreen() {
   return (
     <View style={styles.container}>
       <MapView
+        delayLongPress={300}
+        onLongPress={() => {
+          setPlacing(true);
+          setSelectingType(false);
+          setSelectingSeverity(false);
+        }}
         style={styles.map}
         initialRegion={region}
         onRegionChangeComplete={setRegion}
         showsUserLocation
-        delayLongPress={300}
-        delayLongPress={300}
-        onLongPress={() => setPlacing(true)}
       >
         {visibleHazards.map((h) => {
           const cfg = HAZARD_CONFIG[h.type];
