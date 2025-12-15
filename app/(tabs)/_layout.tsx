@@ -1,29 +1,36 @@
-import { Ionicons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 
 export default function TabsLayout() {
   return (
-    <Tabs screenOptions={{ headerShown: false }}>
+    <Tabs
+      screenOptions={{
+        headerShown: false,
+        tabBarStyle: { backgroundColor: "#000" },
+        tabBarActiveTintColor: "#fff",
+      }}
+    >
       <Tabs.Screen
         name="map"
         options={{
           title: "Map",
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="map" size={size} color={color} />
+            <Ionicons name="map" size={size ?? 22} color={color} />
           ),
         }}
       />
-      <Tabs.Screen name="insights" options={{ title: "Insights" }} />
 
       <Tabs.Screen
-        name="analytics"
+        name="insights"
         options={{
-          title: "Analytics",
+          title: "Insights",
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="analytics" size={size ?? 22} color={color} />
+            <Ionicons name="bulb" size={size ?? 22} color={color} />
           ),
         }}
       />
-</Tabs>
+
+      {/* analytics.tsx is auto-registered by Expo Router — DO NOT ADD MANUALLY */}
+    </Tabs>
   );
 }
