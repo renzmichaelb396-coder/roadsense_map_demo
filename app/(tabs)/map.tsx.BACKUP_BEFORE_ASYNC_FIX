@@ -42,6 +42,7 @@ type Filters = { LOW: boolean; MEDIUM: boolean; HIGH: boolean };
 const STORAGE_KEY = "ROADSENSE_HAZARDS";
 const EXPIRY_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_FILTERS: Filters = { LOW: true, MEDIUM: true, HIGH: true };
+const DEDUPE_RADIUS_METERS = 25;
 
 const HAZARD_CONFIG: Record<
   HazardType,
@@ -63,13 +64,32 @@ const SEVERITY_HINT: Record<Severity, string> = {
   HIGH: "Avoid if possible",
 };
 
+/* ===================== HELPERS ===================== */
+function distanceMeters(
+  aLat: number,
+  aLng: number,
+  bLat: number,
+  bLng: number
+) {
+  const R = 6371000;
+  const dLat = ((bLat - aLat) * Math.PI) / 180;
+  const dLng = ((bLng - aLng) * Math.PI) / 180;
+  const x =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((aLat * Math.PI) / 180) *
+      Math.cos((bLat * Math.PI) / 180) *
+      Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
+}
+
 /* ===================== SCREEN ===================== */
 export default function MapScreen() {
+  const enterPlacingMode = () => setPlacing(true);
+
   const [region, setRegion] = useState<Region | null>(null);
   const [hazards, setHazards] = useState<Hazard[]>([]);
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
 
-  // FLOW STATES
   const [placing, setPlacing] = useState(false);
   const [selectingType, setSelectingType] = useState(false);
   const [selectingSeverity, setSelectingSeverity] = useState(false);
@@ -77,6 +97,8 @@ export default function MapScreen() {
 
   const [pendingType, setPendingType] = useState<HazardType | null>(null);
   const [pendingSeverity, setPendingSeverity] = useState<Severity | null>(null);
+
+  const [toast, setToast] = useState<string | null>(null);
 
   /* ---------- LOCATION ---------- */
   useEffect(() => {
@@ -107,26 +129,43 @@ export default function MapScreen() {
 
   function persist(list: Hazard[]) {
     setHazards(list);
-    AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+    AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(list)).catch(() => {});
   }
 
   /* ---------- ACTIONS ---------- */
   function submitHazard() {
     if (!region || !pendingType || !pendingSeverity) return;
 
-    persist([
-      ...hazards,
-      {
-        id: Date.now().toString(),
-        type: pendingType,
-        severity: pendingSeverity,
-        latitude: region.latitude,
-        longitude: region.longitude,
-        createdAt: Date.now(),
-      },
-    ]);
+    const duplicate = hazards.some(
+      (h) =>
+        h.type === pendingType &&
+        distanceMeters(
+          h.latitude,
+          h.longitude,
+          region.latitude,
+          region.longitude
+        ) <= DEDUPE_RADIUS_METERS
+    );
 
-    // RESET FLOW
+    if (duplicate) {
+      setToast("Hazard already reported nearby");
+    } else {
+      persist([
+        ...hazards,
+        {
+          id: Date.now().toString(),
+          type: pendingType,
+          severity: pendingSeverity,
+          latitude: region.latitude,
+          longitude: region.longitude,
+          createdAt: Date.now(),
+        },
+      ]);
+      setToast("Hazard reported");
+    }
+
+    setTimeout(() => setToast(null), 1800);
+
     setPlacing(false);
     setSelectingType(false);
     setSelectingSeverity(false);
@@ -146,9 +185,18 @@ export default function MapScreen() {
   }
 
   const visibleHazards = useMemo(
-    () => hazards.filter((h) => filters[h.severity]),
-    [hazards, filters]
-  );
+  () => hazards.filter((h) => filters[h.severity]),
+  [hazards, filters]
+);
+
+function ageOpacity(createdAt) {
+  const ageMs = Date.now() - createdAt;
+  const day = 24 * 60 * 60 * 1000;
+  if (ageMs <= day) return 1;
+  if (ageMs <= 3 * day) return 0.65;
+  return 0.35;
+}
+
 
   if (!region) {
     return (
@@ -165,9 +213,7 @@ export default function MapScreen() {
         initialRegion={region}
         onRegionChangeComplete={setRegion}
         showsUserLocation
-        delayLongPress={300}
-        delayLongPress={300}
-        onLongPress={() => setPlacing(true)}
+        onLongPress={enterPlacingMode}
       >
         {visibleHazards.map((h) => {
           const cfg = HAZARD_CONFIG[h.type];
@@ -185,22 +231,20 @@ export default function MapScreen() {
         })}
       </MapView>
 
-      {/* CENTER PIN */}
       {placing && (
         <View pointerEvents="none" style={styles.centerPin}>
           <Ionicons name="location" size={36} color="#EF4444" />
         </View>
       )}
 
+      {toast && (
+        <View style={styles.toast}>
+          <Text style={styles.toastText}>{toast}</Text>
+        </View>
+      )}
+
       {/* FAB */}
-      <Pressable
-        style={styles.fab}
-        onPress={() => {
-          setPlacing(true);
-          setSelectingType(false);
-          setSelectingSeverity(false);
-        }}
-      >
+      <Pressable style={styles.fab} onPress={enterPlacingMode}>
         <Ionicons name="add" size={28} color="white" />
       </Pressable>
 
@@ -209,22 +253,19 @@ export default function MapScreen() {
         <Ionicons name="information" size={18} color="white" />
       </Pressable>
 
-      {/* STEP 1: CONFIRM LOCATION */}
+      {/* STEP 1 */}
       <Modal transparent visible={placing && !selectingType}>
         <Pressable style={styles.overlay} onPress={() => setPlacing(false)} />
         <View style={styles.sheet}>
           <Text style={styles.title}>Place hazard</Text>
           <Text style={styles.sub}>Drag map to position the pin</Text>
-          <Pressable
-            style={styles.confirm}
-            onPress={() => setSelectingType(true)}
-          >
+          <Pressable style={styles.confirm} onPress={() => setSelectingType(true)}>
             <Text style={styles.confirmText}>Confirm location</Text>
           </Pressable>
         </View>
       </Modal>
 
-      {/* STEP 2: SELECT TYPE */}
+      {/* STEP 2 */}
       <Modal transparent visible={selectingType && !selectingSeverity}>
         <Pressable style={styles.overlay} onPress={() => setSelectingType(false)} />
         <View style={styles.sheet}>
@@ -244,12 +285,9 @@ export default function MapScreen() {
         </View>
       </Modal>
 
-      {/* STEP 3: SELECT SEVERITY */}
+      {/* STEP 3 */}
       <Modal transparent visible={selectingSeverity}>
-        <Pressable
-          style={styles.overlay}
-          onPress={() => setSelectingSeverity(false)}
-        />
+        <Pressable style={styles.overlay} onPress={() => setSelectingSeverity(false)} />
         <View style={styles.sheet}>
           {(["LOW", "MEDIUM", "HIGH"] as Severity[]).map((s) => (
             <Pressable
@@ -266,10 +304,7 @@ export default function MapScreen() {
             </Pressable>
           ))}
           <Pressable
-            style={[
-              styles.confirm,
-              !pendingSeverity && { opacity: 0.4 },
-            ]}
+            style={[styles.confirm, !pendingSeverity && { opacity: 0.4 }]}
             disabled={!pendingSeverity}
             onPress={submitHazard}
           >
@@ -293,10 +328,7 @@ export default function MapScreen() {
               />
             </View>
           ))}
-          <Pressable
-            style={styles.confirm}
-            onPress={() => setLegendVisible(false)}
-          >
+          <Pressable style={styles.confirm} onPress={() => setLegendVisible(false)}>
             <Text style={styles.confirmText}>Close</Text>
           </Pressable>
         </View>
@@ -328,6 +360,17 @@ const styles = StyleSheet.create({
     marginLeft: -18,
     marginTop: -36,
   },
+
+  toast: {
+    position: "absolute",
+    bottom: 110,
+    alignSelf: "center",
+    backgroundColor: "#111",
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 16,
+  },
+  toastText: { color: "white", fontWeight: "600" },
 
   fab: {
     position: "absolute",

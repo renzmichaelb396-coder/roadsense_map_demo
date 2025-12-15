@@ -165,9 +165,6 @@ export default function MapScreen() {
         initialRegion={region}
         onRegionChangeComplete={setRegion}
         showsUserLocation
-        delayLongPress={300}
-        delayLongPress={300}
-        onLongPress={() => setPlacing(true)}
       >
         {visibleHazards.map((h) => {
           const cfg = HAZARD_CONFIG[h.type];

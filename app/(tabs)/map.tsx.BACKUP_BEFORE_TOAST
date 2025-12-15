@@ -65,6 +65,11 @@ const SEVERITY_HINT: Record<Severity, string> = {
 
 /* ===================== SCREEN ===================== */
 export default function MapScreen() {
+
+  const enterPlacingMode = () => {
+    setPlacing(true);
+  };
+
   const [region, setRegion] = useState<Region | null>(null);
   const [hazards, setHazards] = useState<Hazard[]>([]);
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
@@ -165,10 +170,8 @@ export default function MapScreen() {
         initialRegion={region}
         onRegionChangeComplete={setRegion}
         showsUserLocation
-        delayLongPress={300}
-        delayLongPress={300}
-        onLongPress={() => setPlacing(true)}
-      >
+      
+        onLongPress={enterPlacingMode}>
         {visibleHazards.map((h) => {
           const cfg = HAZARD_CONFIG[h.type];
           return (

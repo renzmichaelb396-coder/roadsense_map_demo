@@ -13,6 +13,9 @@ import {
   View,
 } from "react-native";
 import MapView, { Marker, Region } from "react-native-maps";
+import { loadHazards, addHazard, deleteHazardById, Hazard } from "@/lib/hazards";
+import { buildPreview } from "@/lib/preview";
+
 
 /* ===================== TYPES ===================== */
 type HazardType =
@@ -69,6 +72,14 @@ export default function MapScreen() {
   const [hazards, setHazards] = useState<Hazard[]>([]);
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
 
+  const onDevLongPress = async (e: any) => {
+    const { latitude, longitude } = e.nativeEvent.coordinate;
+
+    setSelectedCoordinate({ latitude, longitude });
+    setShowAddModal(true);
+  };
+
+
   // FLOW STATES
   const [placing, setPlacing] = useState(false);
   const [selectingType, setSelectingType] = useState(false);
@@ -80,6 +91,11 @@ export default function MapScreen() {
 
   /* ---------- LOCATION ---------- */
   useEffect(() => {
+    (async () => {
+      const stored = await loadHazards();
+      setHazards(stored);
+    })();
+
     (async () => {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== "granted") return;
@@ -160,14 +176,11 @@ export default function MapScreen() {
 
   return (
     <View style={styles.container}>
-      <MapView
+      <MapView onLongPress={onDevLongPress}
         style={styles.map}
         initialRegion={region}
         onRegionChangeComplete={setRegion}
         showsUserLocation
-        delayLongPress={300}
-        delayLongPress={300}
-        onLongPress={() => setPlacing(true)}
       >
         {visibleHazards.map((h) => {
           const cfg = HAZARD_CONFIG[h.type];
