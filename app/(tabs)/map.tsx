@@ -215,98 +215,99 @@ export default function MapScreen() {
       </Pressable>
 
       {/* STEP 1: CONFIRM LOCATION */}
-      <Modal transparent visible={placing && !selectingType}>
-        <Pressable style={styles.overlay} onPress={() => setPlacing(false)} />
-        <View style={styles.sheet}>
-          <Text style={styles.title}>Place hazard</Text>
-          <Text style={styles.sub}>Drag map to position the pin</Text>
-          <Pressable
-            style={styles.confirm}
-            onPress={() => setSelectingType(true)}
-          >
-            <Text style={styles.confirmText}>Confirm location</Text>
-          </Pressable>
-        </View>
-      </Modal>
+      {sheet !== "NONE" && (
+  
+)}\
+)}
 
       {/* STEP 2: SELECT TYPE */}
-      <Modal transparent visible={selectingType && !selectingSeverity}>
-        <Pressable style={styles.overlay} onPress={() => setSelectingType(false)} />
-        <View style={styles.sheet}>
-          {Object.entries(HAZARD_CONFIG).map(([k, cfg]) => (
-            <Pressable
-              key={k}
-              style={styles.row}
-              onPress={() => {
-                setPendingType(k as HazardType);
-                setSelectingSeverity(true);
-              }}
-            >
-              <Ionicons name={cfg.icon} size={20} color={cfg.color} />
-              <Text style={styles.text}>{cfg.label}</Text>
-            </Pressable>
-          ))}
-        </View>
-      </Modal>
+      \
+)}
 
       {/* STEP 3: SELECT SEVERITY */}
-      <Modal transparent visible={selectingSeverity}>
-        <Pressable
-          style={styles.overlay}
-          onPress={() => setSelectingSeverity(false)}
-        />
-        <View style={styles.sheet}>
-          {(["LOW", "MEDIUM", "HIGH"] as Severity[]).map((s) => (
-            <Pressable
-              key={s}
-              style={[
-                styles.row,
-                pendingSeverity === s && styles.activeRow,
-              ]}
-              onPress={() => setPendingSeverity(s)}
-            >
-              <Text style={styles.text}>
-                {s} — {SEVERITY_HINT[s]}
-              </Text>
-            </Pressable>
-          ))}
-          <Pressable
-            style={[
-              styles.confirm,
-              !pendingSeverity && { opacity: 0.4 },
-            ]}
-            disabled={!pendingSeverity}
-            onPress={submitHazard}
-          >
-            <Text style={styles.confirmText}>Submit</Text>
-          </Pressable>
-        </View>
-      </Modal>
+      \
+)}
 
       {/* LEGEND */}
-      <Modal transparent visible={legendVisible}>
-        <Pressable style={styles.overlay} onPress={() => setLegendVisible(false)} />
-        <View style={styles.sheet}>
-          {(["LOW", "MEDIUM", "HIGH"] as Severity[]).map((s) => (
-            <View key={s} style={styles.filterRow}>
-              <Text style={styles.text}>{s}</Text>
-              <Switch
-                value={filters[s]}
-                onValueChange={(v) =>
-                  setFilters({ ...filters, [s]: v })
-                }
-              />
+      \
+)}
+    
+      {sheet !== "NONE" && (
+        <Modal transparent onRequestClose={closeAllSheets}>
+          <Pressable style={styles.overlay} onPress={closeAllSheets} />
+
+          {sheet === "PLACE" && (
+            <View style={styles.sheet}>
+              <Text style={styles.title}>Place hazard</Text>
+              <Text style={styles.sub}>Drag map to position the pin</Text>
+              <Pressable style={styles.confirm} onPress={() => setSheet("TYPE")}>
+                <Text style={styles.confirmText}>Confirm location</Text>
+              </Pressable>
             </View>
-          ))}
-          <Pressable
-            style={styles.confirm}
-            onPress={() => setLegendVisible(false)}
-          >
-            <Text style={styles.confirmText}>Close</Text>
-          </Pressable>
-        </View>
-      </Modal>
-    </View>
+          )}
+
+          {sheet === "TYPE" && (
+            <View style={styles.sheet}>
+              {Object.entries(HAZARD_CONFIG).map(([k, cfg]) => (
+                <Pressable
+                  key={k}
+                  style={styles.row}
+                  onPress={() => {
+                    setPendingType(k);
+                    setPendingSeverity(null);
+                    setSheet("SEVERITY");
+                  }}
+                >
+                  <Ionicons name={cfg.icon} size={20} color={cfg.color} />
+                  <Text style={styles.text}>{cfg.label}</Text>
+                </Pressable>
+              ))}
+            </View>
+          )}
+
+          {sheet === "SEVERITY" && (
+            <View style={styles.sheet}>
+              {(["LOW", "MEDIUM", "HIGH"]).map((s) => (
+                <Pressable
+                  key={s}
+                  style={[styles.row, pendingSeverity === s && styles.activeRow]}
+                  onPress={() => setPendingSeverity(s)}
+                >
+                  <Text style={styles.text}>
+                    {s} — {SEVERITY_HINT[s]}
+                  </Text>
+                </Pressable>
+              ))}
+              <Pressable
+                style={[styles.confirm, !pendingSeverity && { opacity: 0.4 }]}
+                disabled={!pendingSeverity}
+                onPress={submitHazard}
+              >
+                <Text style={styles.confirmText}>Submit</Text>
+              </Pressable>
+            </View>
+          )}
+
+          {sheet === "LEGEND" && (
+            <View style={styles.sheet}>
+              {(["LOW", "MEDIUM", "HIGH"]).map((s) => (
+                <View key={s} style={styles.filterRow}>
+                  <Text style={styles.text}>{s}</Text>
+                  <Switch
+                    value={filters[s]}
+                    onValueChange={(v) => setFilters({ ...filters, [s]: v })}
+                  />
+                </View>
+              ))}
+              <Pressable style={styles.confirm} onPress={closeAllSheets}>
+                <Text style={styles.confirmText}>Close</Text>
+              </Pressable>
+            </View>
+          )}
+        </Modal>
+      )}
+
+</View>
   );
 }
 
