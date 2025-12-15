@@ -14,6 +14,8 @@ import {
 } from "react-native";
 import MapView, { Marker, Region } from "react-native-maps";
 
+import { startHazardsRealtime, stopHazardsRealtime } from "@/lib/hazardsRealtime";
+
 /* ===================== TYPES ===================== */
 type HazardType =
   | "FLOOD"
@@ -94,6 +96,12 @@ export default function MapScreen() {
   }, []);
 
   /* ---------- LOAD ---------- */
+
+  /* ---------- REALTIME ---------- */
+  useEffect(() => {
+    startHazardsRealtime();
+    return () => stopHazardsRealtime();
+  }, []);
   useEffect(() => {
     (async () => {
       const raw = await AsyncStorage.getItem(STORAGE_KEY);
