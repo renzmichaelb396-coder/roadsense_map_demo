@@ -1,11 +1,10 @@
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Location from "expo-location";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
-  Modal,
   Pressable,
   StyleSheet,
   Switch,
@@ -37,6 +36,7 @@ type Hazard = {
 };
 
 type Filters = { LOW: boolean; MEDIUM: boolean; HIGH: boolean };
+type Sheet = "NONE" | "PLACE" | "TYPE" | "SEVERITY" | "LEGEND";
 
 /* ===================== CONSTS ===================== */
 const STORAGE_KEY = "ROADSENSE_HAZARDS";
@@ -69,14 +69,11 @@ export default function MapScreen() {
   const [hazards, setHazards] = useState<Hazard[]>([]);
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
 
-  // FLOW STATES
-  const [placing, setPlacing] = useState(false);
-  const [selectingType, setSelectingType] = useState(false);
-  const [selectingSeverity, setSelectingSeverity] = useState(false);
-  const [legendVisible, setLegendVisible] = useState(false);
-
+  const [sheet, setSheet] = useState<Sheet>("NONE");
   const [pendingType, setPendingType] = useState<HazardType | null>(null);
   const [pendingSeverity, setPendingSeverity] = useState<Severity | null>(null);
+
+  const placingActive = sheet === "PLACE" || sheet === "TYPE" || sheet === "SEVERITY";
 
   /* ---------- LOCATION ---------- */
   useEffect(() => {
@@ -110,6 +107,26 @@ export default function MapScreen() {
     AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(list));
   }
 
+  /* ---------- FLOW HELPERS ---------- */
+  const exitPlacingMode = useCallback(() => {
+    setSheet("NONE");
+    setPendingType(null);
+    setPendingSeverity(null);
+  }, []);
+
+  const enterPlacingMode = useCallback(() => {
+    setPendingType(null);
+    setPendingSeverity(null);
+    setSheet("PLACE");
+  }, []);
+
+  /* Tap anywhere on map outside sheet = close current sheet */
+  const onMapPress = useCallback(() => {
+    if (sheet !== "NONE") {
+      exitPlacingMode();
+    }
+  }, [sheet, exitPlacingMode]);
+
   /* ---------- ACTIONS ---------- */
   function submitHazard() {
     if (!region || !pendingType || !pendingSeverity) return;
@@ -126,12 +143,7 @@ export default function MapScreen() {
       },
     ]);
 
-    // RESET FLOW
-    setPlacing(false);
-    setSelectingType(false);
-    setSelectingSeverity(false);
-    setPendingType(null);
-    setPendingSeverity(null);
+    exitPlacingMode();
   }
 
   function deleteHazard(id: string) {
@@ -140,10 +152,7 @@ export default function MapScreen() {
       {
         text: "Delete",
         style: "destructive",
-        onPress: () => {
-          persist(hazards.filter((h) => h.id !== id));
-          trackEvent("hazard_delete", { id });
-        },
+        onPress: () => persist(hazards.filter((h) => h.id !== id)),
       },
     ]);
   }
@@ -164,16 +173,13 @@ export default function MapScreen() {
   return (
     <View style={styles.container}>
       <MapView
-        delayLongPress={300}
-        onLongPress={() => {
-          setPlacing(true);
-          setSelectingType(false);
-          setSelectingSeverity(false);
-        }}
         style={styles.map}
         initialRegion={region}
         onRegionChangeComplete={setRegion}
         showsUserLocation
+        delayLongPress={300}
+        onLongPress={enterPlacingMode}
+        onPress={onMapPress}
       >
         {visibleHazards.map((h) => {
           const cfg = HAZARD_CONFIG[h.type];
@@ -191,79 +197,92 @@ export default function MapScreen() {
         })}
       </MapView>
 
-      {/* CENTER PIN */}
-      {placing && (
+      {/* CENTER PIN (follows map center because we use region) */}
+      {placingActive && (
         <View pointerEvents="none" style={styles.centerPin}>
-          <Ionicons name="location" size={36} color="#EF4444" />
+          <Ionicons name="location-sharp" size={40} color="#EF4444" />
         </View>
       )}
 
       {/* FAB */}
-      <Pressable
-        style={styles.fab}
-        onPress={() => {
-          setPlacing(true);
-          setSelectingType(false);
-          setSelectingSeverity(false);
-        }}
-      >
+      <Pressable style={styles.fab} onPress={enterPlacingMode}>
         <Ionicons name="add" size={28} color="white" />
       </Pressable>
 
       {/* LEGEND BUTTON */}
-      <Pressable style={styles.info} onPress={() => setLegendVisible(true)}>
+      <Pressable style={styles.info} onPress={() => setSheet("LEGEND")}>
         <Ionicons name="information" size={18} color="white" />
       </Pressable>
 
-      {/* STEP 1: CONFIRM LOCATION */}
-      <Modal transparent visible={placing && !selectingType}>
-        <Pressable style={styles.overlay} onPress={() => setPlacing(false)} />
-        <View style={styles.sheet}>
-          <Text style={styles.title}>Place hazard</Text>
-          <Text style={styles.sub}>Drag map to position the pin</Text>
-          <Pressable
-            style={styles.confirm}
-            onPress={() => setSelectingType(true)}
-          >
-            <Text style={styles.confirmText}>Confirm location</Text>
-          </Pressable>
-        </View>
-      </Modal>
+      {/* DIM BACKDROP (does NOT block map touches) */}
+      {sheet !== "NONE" && <View pointerEvents="none" style={styles.dim} />}
 
-      {/* STEP 2: SELECT TYPE */}
-      <Modal transparent visible={selectingType && !selectingSeverity}>
-        <Pressable style={styles.overlay} onPress={() => setSelectingType(false)} />
+      {/* SHEETS */}
+      {sheet === "PLACE" && (
         <View style={styles.sheet}>
+          <View style={styles.sheetHeader}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.title}>Place hazard</Text>
+              <Text style={styles.sub}>Drag the map to position the pin</Text>
+            </View>
+          </View>
+
+          <View style={styles.sheetActions}>
+            <Pressable style={styles.cancelBtn} onPress={exitPlacingMode}>
+              <Text style={styles.cancelText}>Cancel</Text>
+            </Pressable>
+
+            <Pressable
+              style={styles.confirmBtn}
+              onPress={() => setSheet("TYPE")}
+            >
+              <Text style={styles.confirmText}>Confirm location</Text>
+            </Pressable>
+          </View>
+        </View>
+      )}
+
+      {sheet === "TYPE" && (
+        <View style={styles.sheet}>
+          <View style={styles.sheetHeader}>
+            <Text style={styles.title}>Select hazard type</Text>
+            <Text style={styles.sub}>Tap anywhere on map to cancel</Text>
+          </View>
+
           {Object.entries(HAZARD_CONFIG).map(([k, cfg]) => (
             <Pressable
               key={k}
               style={styles.row}
               onPress={() => {
                 setPendingType(k as HazardType);
-                setSelectingSeverity(true);
+                setPendingSeverity(null);
+                setSheet("SEVERITY");
               }}
             >
               <Ionicons name={cfg.icon} size={20} color={cfg.color} />
               <Text style={styles.text}>{cfg.label}</Text>
             </Pressable>
           ))}
-        </View>
-      </Modal>
 
-      {/* STEP 3: SELECT SEVERITY */}
-      <Modal transparent visible={selectingSeverity}>
-        <Pressable
-          style={styles.overlay}
-          onPress={() => setSelectingSeverity(false)}
-        />
+          <View style={{ height: 8 }} />
+
+          <Pressable style={styles.cancelBtnFull} onPress={exitPlacingMode}>
+            <Text style={styles.cancelText}>Cancel</Text>
+          </Pressable>
+        </View>
+      )}
+
+      {sheet === "SEVERITY" && (
         <View style={styles.sheet}>
+          <View style={styles.sheetHeader}>
+            <Text style={styles.title}>Select severity</Text>
+            <Text style={styles.sub}>Tap anywhere on map to cancel</Text>
+          </View>
+
           {(["LOW", "MEDIUM", "HIGH"] as Severity[]).map((s) => (
             <Pressable
               key={s}
-              style={[
-                styles.row,
-                pendingSeverity === s && styles.activeRow,
-              ]}
+              style={[styles.row, pendingSeverity === s && styles.activeRow]}
               onPress={() => setPendingSeverity(s)}
             >
               <Text style={styles.text}>
@@ -271,42 +290,47 @@ export default function MapScreen() {
               </Text>
             </Pressable>
           ))}
-          <Pressable
-            style={[
-              styles.confirm,
-              !pendingSeverity && { opacity: 0.4 },
-            ]}
-            disabled={!pendingSeverity}
-            onPress={submitHazard}
-          >
-            <Text style={styles.confirmText}>Submit</Text>
-          </Pressable>
-        </View>
-      </Modal>
 
-      {/* LEGEND */}
-      <Modal transparent visible={legendVisible}>
-        <Pressable style={styles.overlay} onPress={() => setLegendVisible(false)} />
+          <View style={styles.sheetActions}>
+            <Pressable style={styles.cancelBtn} onPress={exitPlacingMode}>
+              <Text style={styles.cancelText}>Cancel</Text>
+            </Pressable>
+
+            <Pressable
+              style={[styles.confirmBtn, !pendingSeverity && { opacity: 0.4 }]}
+              disabled={!pendingSeverity}
+              onPress={submitHazard}
+            >
+              <Text style={styles.confirmText}>Submit</Text>
+            </Pressable>
+          </View>
+        </View>
+      )}
+
+      {sheet === "LEGEND" && (
         <View style={styles.sheet}>
+          <View style={styles.sheetHeader}>
+            <Text style={styles.title}>Legend</Text>
+            <Text style={styles.sub}>Tap anywhere outside to close</Text>
+          </View>
+
           {(["LOW", "MEDIUM", "HIGH"] as Severity[]).map((s) => (
             <View key={s} style={styles.filterRow}>
-              <Text style={styles.text}>{s}</Text>
+              <Text style={[styles.text, { marginLeft: 0 }]}>{s}</Text>
               <Switch
                 value={filters[s]}
-                onValueChange={(v) =>
-                  setFilters({ ...filters, [s]: v })
-                }
+                onValueChange={(v) => setFilters({ ...filters, [s]: v })}
               />
             </View>
           ))}
-          <Pressable
-            style={styles.confirm}
-            onPress={() => setLegendVisible(false)}
-          >
+
+          <View style={{ height: 8 }} />
+
+          <Pressable style={styles.confirmBtnFull} onPress={() => setSheet("NONE")}>
             <Text style={styles.confirmText}>Close</Text>
           </Pressable>
         </View>
-      </Modal>
+      )}
     </View>
   );
 }
@@ -331,8 +355,8 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: "50%",
     left: "50%",
-    marginLeft: -18,
-    marginTop: -36,
+    marginLeft: -20,
+    marginTop: -40,
   },
 
   fab: {
@@ -358,34 +382,76 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
 
-  overlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.35)" },
+  dim: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.25)",
+  },
+
   sheet: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
     backgroundColor: "#111",
     padding: 16,
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
   },
 
+  sheetHeader: { marginBottom: 10 },
+
+  title: { color: "#FFFFFF", fontWeight: "800", fontSize: 18 },
+  sub: { color: "#FFFFFF", marginTop: 6, opacity: 0.92 },
+
   row: { flexDirection: "row", alignItems: "center", paddingVertical: 12 },
   activeRow: { backgroundColor: "rgba(255,255,255,0.15)", borderRadius: 8 },
-  text: { color: "white", marginLeft: 12 },
+  text: { color: "#FFFFFF", marginLeft: 12, fontWeight: "700" },
 
-  title: { color: "white", fontWeight: "700", fontSize: 16 },
-  sub: { color: "rgba(255,255,255,0.7)", marginTop: 6 },
-
-  confirm: {
+  sheetActions: {
+    flexDirection: "row",
+    gap: 12,
     marginTop: 12,
-    backgroundColor: "#333",
-    padding: 12,
+  },
+
+  cancelBtn: {
+    flex: 1,
+    backgroundColor: "#1F2937",
+    paddingVertical: 12,
+    paddingHorizontal: 16,
     borderRadius: 10,
     alignItems: "center",
   },
-  confirmText: { color: "white", fontWeight: "700" },
+  confirmBtn: {
+    flex: 1,
+    backgroundColor: "#333",
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    alignItems: "center",
+  },
+
+  cancelBtnFull: {
+    backgroundColor: "#1F2937",
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    alignItems: "center",
+  },
+  confirmBtnFull: {
+    backgroundColor: "#333",
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    alignItems: "center",
+  },
+
+  cancelText: { color: "#FFFFFF", fontWeight: "800" },
+  confirmText: { color: "#FFFFFF", fontWeight: "800" },
 
   filterRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: 8,
+    paddingVertical: 10,
   },
 });

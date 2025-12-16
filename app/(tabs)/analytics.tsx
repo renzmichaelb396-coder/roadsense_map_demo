@@ -1,12 +1,12 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useMemo, useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
-import { getHazards } from "@/lib/hazards";
+import { loadHazards } from "@/lib/hazards";
 
 type Hazard = {
   id: string;
   type: string;
-  severity: "LOW" | "MEDIUM" | "HIGH";
+  severity: number;
   createdAt: number;
 };
 
@@ -14,15 +14,17 @@ export default function AnalyticsScreen() {
   const [hazards, setHazards] = useState<Hazard[]>([]);
 
   useEffect(() => {
-    getHazards().then(setHazards).catch(() => {});
+    loadHazards().then(setHazards).catch(() => {});
   }, []);
 
   const stats = useMemo(() => {
-    const bySeverity = { LOW: 0, MEDIUM: 0, HIGH: 0 } as Record<string, number>;
+    const bySeverity = { LOW: 0, MEDIUM: 0, HIGH: 0 };
     const byType: Record<string, number> = {};
 
     for (const h of hazards) {
-      bySeverity[h.severity]++;
+      if (h.severity === 0) bySeverity.LOW++;
+      if (h.severity === 1) bySeverity.MEDIUM++;
+      if (h.severity === 2) bySeverity.HIGH++;
       byType[h.type] = (byType[h.type] || 0) + 1;
     }
 
@@ -32,8 +34,8 @@ export default function AnalyticsScreen() {
   return (
     <ScrollView style={styles.container} contentContainerStyle={{ padding: 16 }}>
       <View style={styles.header}>
-        <Ionicons name="analytics" size={22} color="white" />
-        <Text style={styles.h1}>Analytics</Text>
+        <Ionicons name="stats-chart" size={22} color="white" />
+        <Text style={styles.h1}>Insights</Text>
       </View>
 
       <View style={styles.row3}>
@@ -66,16 +68,13 @@ export default function AnalyticsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#000" },
-
   header: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 16 },
   h1: { color: "white", fontSize: 20, fontWeight: "800" },
   h2: { color: "white", fontWeight: "800", marginBottom: 8 },
-
   row3: { flexDirection: "row", gap: 10, marginBottom: 16 },
   kpi: { flex: 1, backgroundColor: "#111", borderRadius: 14, padding: 12 },
   kpiTitle: { color: "rgba(255,255,255,0.6)", fontSize: 12 },
   kpiValue: { color: "white", fontSize: 22, fontWeight: "900" },
-
   card: { backgroundColor: "#111", borderRadius: 14, padding: 12 },
   listRow: {
     flexDirection: "row",
