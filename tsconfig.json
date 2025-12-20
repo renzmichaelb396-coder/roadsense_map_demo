@@ -13,5 +13,13 @@
     "**/*.tsx",
     ".expo/types/**/*.ts",
     "expo-env.d.ts"
+  ],
+  "exclude": [
+    "backups",
+    "lib/_archive",
+    "**/*.bak",
+    "**/*.locked.ts",
+    "**/*.locked.tsx",
+    "scripts"
   ]
 }

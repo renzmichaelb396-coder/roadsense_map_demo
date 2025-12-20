@@ -1,0 +1,9 @@
+{
+  "exclude": [
+    "backups",
+    "lib/_archive",
+    "**/*.bak",
+    "**/*.locked.ts",
+    "**/*.locked.tsx"
+  ]
+}
