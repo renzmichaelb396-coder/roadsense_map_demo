@@ -1,0 +1,58 @@
+import { useEffect, useState } from 'react';
+import { View, Text, ScrollView } from 'react-native';
+import { loadHazards } from '../lib/hazards';
+
+type Hazard = {
+  id: string;
+  type: string;
+  severity: string;
+  latitude: number | null;
+  longitude: number | null;
+  created_at: string;
+};
+
+export default function LGUDashboard() {
+  const [hazards, setHazards] = useState<Hazard[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const data = await loadHazards();
+        setHazards(data);
+      } catch (e: any) {
+        setError(e.message ?? 'Failed to load hazards');
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  const total = hazards.length;
+  const mappable = hazards.filter(
+    h => typeof h.latitude === 'number' && typeof h.longitude === 'number'
+  ).length;
+  const pending = total - mappable;
+
+  return (
+    <ScrollView style={{ backgroundColor: '#000', minHeight: '100%' }}>
+      <View style={{ padding: 16 }}>
+        <Text style={{ fontSize: 22, fontWeight: '700', color: '#fff' }}>
+          RoadSense LGU Dashboard
+        </Text>
+
+        {loading && <Text style={{ color: '#aaa' }}>Loading hazards…</Text>}
+        {error && <Text style={{ color: '#f87171' }}>{error}</Text>}
+
+        {!loading && !error && (
+          <View style={{ marginTop: 12 }}>
+            <Text style={{ color: '#22c55e' }}>Total Hazards: {total}</Text>
+            <Text style={{ color: '#38bdf8' }}>Mappable: {mappable}</Text>
+            <Text style={{ color: '#facc15' }}>Pending Location: {pending}</Text>
+          </View>
+        )}
+      </View>
+    </ScrollView>
+  );
+}
