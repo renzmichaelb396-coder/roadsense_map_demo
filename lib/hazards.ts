@@ -1,7 +1,13 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { supabase } from "./supabase";
+import { getSupabase } from "./supabase";
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
+
+export type HazardStatus =
+  | "reported"
+  | "verified"
+  | "in_progress"
+  | "resolved";
 
 export type Hazard = {
   id: string;
@@ -9,6 +15,7 @@ export type Hazard = {
   longitude: number;
   type: string;
   severity: number;
+  status: HazardStatus;
   createdAt: number;
 };
 
@@ -34,7 +41,11 @@ async function readStore(): Promise<Store> {
   const raw = await AsyncStorage.getItem(STORAGE_KEY);
   if (!raw) return { schemaVersion: SCHEMA_VERSION, hazards: [] };
   try {
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw);
+    return {
+      schemaVersion: SCHEMA_VERSION,
+      hazards: Array.isArray(parsed.hazards) ? parsed.hazards : [],
+    };
   } catch {
     return { schemaVersion: SCHEMA_VERSION, hazards: [] };
   }
@@ -48,78 +59,87 @@ async function writeStore(hazards: Hazard[]) {
 }
 
 /* ---------- cloud ---------- */
-export async function loadHazardsFromSupabase(): Promise<Hazard[]> {
-  const res = await supabase
+async function loadFromCloud(): Promise<Hazard[]> {
+  const supabase = getSupabase();
+  if (!supabase) return [];
+
+  const { data } = await supabase
     .from("hazards")
-    .select("id,latitude,longitude,type,severity,created_at,deleted_at,is_deleted");
-
-  if (!Array.isArray(res.data)) return [];
-
-  return res.data
-    .filter((r: any) => !r.deleted_at && !r.is_deleted)
-    .map(
-      (r: any): Hazard => ({
-        id: String(r.id),
-        latitude: Number(r.latitude),
-        longitude: Number(r.longitude),
-        type: String(r.type),
-        severity: Number(r.severity),
-        createdAt: toEpoch(r.created_at),
-      })
+    .select(
+      "id,latitude,longitude,type,severity,status,created_at,is_deleted,deleted_at"
     );
-}
 
-async function cloudUpsert(h: Hazard) {
-  await supabase.from("hazards").upsert({
-    id: h.id,
-    latitude: h.latitude,
-    longitude: h.longitude,
-    type: h.type,
-    severity: h.severity,
-    created_at: new Date(h.createdAt).toISOString(),
-    is_deleted: false,
-    deleted_at: null,
-  });
-}
+  if (!Array.isArray(data)) return [];
 
-async function cloudSoftDelete(id: string) {
-  await supabase.from("hazards").upsert({
-    id,
-    is_deleted: true,
-  });
+  return data
+    .filter((r: any) => !r.is_deleted && !r.deleted_at)
+    .map((r: any): Hazard => ({
+      id: String(r.id),
+      latitude: Number(r.latitude),
+      longitude: Number(r.longitude),
+      type: String(r.type),
+      severity: Number(r.severity),
+      status: (r.status ?? "reported") as HazardStatus,
+      createdAt: toEpoch(r.created_at),
+    }));
 }
 
 /* ---------- public API ---------- */
 export async function loadHazards(): Promise<Hazard[]> {
-  const store = await readStore();
-  if (store.hazards.length) return store.hazards;
+  try {
+    const store = await readStore();
+    if (store.hazards.length > 0) return store.hazards;
 
-  const cloud = await loadHazardsFromSupabase();
-  await writeStore(cloud);
-  return cloud;
+    const cloud = await loadFromCloud();
+    await writeStore(cloud);
+    return cloud;
+  } catch (e) {
+    console.warn("[Hazards] load failed:", e);
+    return [];
+  }
 }
 
 export async function addHazard(h: Hazard): Promise<boolean> {
-  const hazards = await loadHazards();
-  const next = [...hazards, h];
+  const store = await readStore();
+  const next = [...store.hazards, h];
   await writeStore(next);
-  cloudUpsert(h).catch(() => {});
+
+  const supabase = getSupabase();
+  if (!supabase) return true;
+
+  supabase
+    .from("hazards")
+    .upsert({
+      id: h.id,
+      latitude: h.latitude,
+      longitude: h.longitude,
+      type: h.type,
+      severity: h.severity,
+      status: h.status,
+      created_at: new Date(h.createdAt).toISOString(),
+      is_deleted: false,
+      deleted_at: null,
+    })
+    .catch((err) =>
+      console.warn("[Hazards] Cloud upsert failed:", err?.message)
+    );
+
   return true;
 }
 
-export async function deleteHazardById(id: string) {
-  const hazards = await loadHazards();
-  const next = hazards.filter((h) => h.id !== id);
+export async function updateHazardStatus(id: string, status: HazardStatus) {
+  const store = await readStore();
+  const next = store.hazards.map((h) =>
+    h.id === id ? { ...h, status } : h
+  );
   await writeStore(next);
-  cloudSoftDelete(id).catch(() => {});
-}
 
-export async function syncHazardsToSupabase() {
-  const hazards = await loadHazards();
-  for (const h of hazards) cloudUpsert(h).catch(() => {});
-}
+  const supabase = getSupabase();
+  if (!supabase) return;
 
-/* ---------- legacy compat ---------- */
-export async function saveHazards(_: any) {
-  /* no-op */
+  supabase
+    .from("hazards")
+    .update({ status })
+    .eq("id", id)
+    .catch(() => {});
 }

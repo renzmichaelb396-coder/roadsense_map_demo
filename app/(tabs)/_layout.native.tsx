@@ -3,13 +3,7 @@ import { Ionicons } from "@expo/vector-icons";
 
 export default function TabsLayout() {
   return (
-    <Tabs
-      screenOptions={{
-        headerShown: false,
-        tabBarStyle: { backgroundColor: "#000" },
-        tabBarActiveTintColor: "#fff",
-      }}
-    >
+    <Tabs screenOptions={{ headerShown: false }}>
       <Tabs.Screen
         name="map"
         options={{
@@ -19,7 +13,6 @@ export default function TabsLayout() {
           ),
         }}
       />
-
       <Tabs.Screen
         name="insights"
         options={{
@@ -29,8 +22,15 @@ export default function TabsLayout() {
           ),
         }}
       />
-
-      {/* analytics.tsx is auto-registered by Expo Router — DO NOT ADD MANUALLY */}
+      <Tabs.Screen
+        name="analytics"
+        options={{
+          title: "Analytics",
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="stats-chart" size={size ?? 22} color={color} />
+          ),
+        }}
+      />
     </Tabs>
   );
 }

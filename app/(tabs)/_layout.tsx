@@ -1,5 +1,36 @@
-// Base layout required by Expo Router.
-// This file exists ONLY to satisfy the router.
-// Actual behavior is defined in platform-specific layouts.
+import { Tabs } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 
-export { default } from "./_layout.native";
+export default function TabsLayout() {
+  return (
+    <Tabs screenOptions={{ headerShown: false }}>
+      <Tabs.Screen
+        name="map"
+        options={{
+          title: "Map",
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="map" size={size ?? 22} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="insights"
+        options={{
+          title: "Insights",
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="bulb" size={size ?? 22} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="analytics"
+        options={{
+          title: "Analytics",
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="stats-chart" size={size ?? 22} color={color} />
+          ),
+        }}
+      />
+    </Tabs>
+  );
+}

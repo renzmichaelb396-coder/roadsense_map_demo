@@ -1,18 +1,26 @@
-import { createClient } from '@supabase/supabase-js';
-import Constants from 'expo-constants';
+import { createClient, SupabaseClient } from "@supabase/supabase-js";
+import Constants from "expo-constants";
 
-const extra = Constants.expoConfig?.extra as {
-  supabaseUrl?: string;
-  supabaseAnonKey?: string;
-};
+let _client: SupabaseClient | null = null;
 
-if (!extra?.supabaseUrl || !extra?.supabaseAnonKey) {
-  throw new Error(
-    'Supabase env missing. Check EXPO_PUBLIC_SUPABASE_URL / ANON_KEY'
-  );
+export function getSupabase(): SupabaseClient | null {
+  if (_client) return _client;
+
+  const extra =
+    Constants.expoConfig?.extra ??
+    (Constants.manifest as any)?.extra ??
+    {};
+
+  const url = extra.supabaseUrl;
+  const anonKey = extra.supabaseAnonKey;
+
+  if (!url || !anonKey) {
+    console.warn(
+      "[Supabase] Missing env. Running in offline / local-only mode."
+    );
+    return null;
+  }
+
+  _client = createClient(url, anonKey);
+  return _client;
 }
-
-export const supabase = createClient(
-  extra.supabaseUrl,
-  extra.supabaseAnonKey
-);

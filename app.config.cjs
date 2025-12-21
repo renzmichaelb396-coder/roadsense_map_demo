@@ -1,0 +1,17 @@
+require('dotenv').config();
+
+module.exports = {
+  expo: {
+    name: "RoadSense",
+    slug: "roadsense-mvp",
+    scheme: "roadsensemvp",
+
+    plugins: ["expo-router"],
+
+    extra: {
+      supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL,
+      supabaseAnonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY,
+      mapboxToken: process.env.NEXT_PUBLIC_MAPBOX_TOKEN,
+    },
+  },
+};

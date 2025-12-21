@@ -1,3 +1,77 @@
-export default function LGUMapWebDisabled() {
-  return null;
+import { useEffect, useState } from "react";
+import Map, { Marker } from "react-map-gl";
+import "mapbox-gl/dist/mapbox-gl.css";
+import { View } from "react-native";
+import { supabase } from "../../lib/supabase";
+
+type Hazard = {
+  id: string;
+  latitude: number;
+  longitude: number;
+  severity: "LOW" | "MEDIUM" | "HIGH";
+};
+
+export default function LGUWebMap() {
+  const [hazards, setHazards] = useState<Hazard[]>([]);
+
+  useEffect(() => {
+    const load = async () => {
+      const { data, error } = await supabase
+        .from("hazards")
+        .select("id, latitude, longitude, severity");
+
+      if (!error && data) {
+        setHazards(data as Hazard[]);
+      }
+    };
+
+    load();
+  }, []);
+
+  return (
+    <View style={{ flex: 1 }}>
+      <Map
+        mapboxAccessToken={process.env.NEXT_PUBLIC_MAPBOX_TOKEN}
+        initialViewState={{
+          latitude: 14.5995,
+          longitude: 120.9842,
+          zoom: 11,
+        }}
+        style={{ width: "100%", height: "100%" }}
+        mapStyle="mapbox://styles/mapbox/streets-v12"
+      >
+        {hazards.map((h) => (
+          <Marker key={h.id} latitude={h.latitude} longitude={h.longitude}>
+            <div
+              style={{
+                width: 10,
+                height: 10,
+                borderRadius: "50%",
+                background:
+                  h.severity === "HIGH"
+                    ? "red"
+                    : h.severity === "MEDIUM"
+                    ? "orange"
+                    : "yellow",
+              }}
+            />
+          </Marker>
+        ))}
+      </Map>
+
+      <div
+        style={{
+          position: "absolute",
+          bottom: 16,
+          left: 16,
+          background: "white",
+          padding: 8,
+          borderRadius: 6,
+          fontSize: 12,
+        }}
+      >
+        LGU Hazard Visibility (Read-Only)
+      </div>
+    </View>
+  );
 }
