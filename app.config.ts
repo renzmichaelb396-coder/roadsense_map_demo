@@ -6,10 +6,10 @@ const config: ExpoConfig = {
   scheme: "roadsense",
   version: "1.0.0",
   orientation: "portrait",
-  icon: "./assets/icon.png",
+  icon: "./assets/images/icon.png",
   userInterfaceStyle: "light",
   splash: {
-    image: "./assets/splash.png",
+    image: "./assets/images/icon.png",
     resizeMode: "contain",
     backgroundColor: "#ffffff"
   },
@@ -20,7 +20,7 @@ const config: ExpoConfig = {
   android: {
     package: "com.rbbrenz.roadsensemvp",
     adaptiveIcon: {
-      foregroundImage: "./assets/adaptive-icon.png",
+      foregroundImage: "./assets/images/adaptive-icon.png",
       backgroundColor: "#ffffff"
     }
   },
