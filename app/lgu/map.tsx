@@ -1,7 +1,7 @@
-import { View, Text, TouchableOpacity, Modal, Alert, ScrollView } from "react-native";
-import MapView, { Marker, MapPressEvent } from "react-native-maps";
+import { View, Text, TouchableOpacity, Modal, Alert } from "react-native";
+import MapView, { Marker, MapPressEvent, Region } from "react-native-maps";
 import * as Location from "expo-location";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { addHazard, loadHazards, Hazard } from "@/lib/hazards";
 
 /* -------------------- CONFIG -------------------- */
@@ -24,7 +24,7 @@ function generateHazardId(lat: number, lng: number) {
 /* -------------------- COMPONENT -------------------- */
 
 export default function LGUMap() {
-  const [location, setLocation] = useState<Location.LocationObject | null>(null);
+  const [region, setRegion] = useState<Region | null>(null);
   const [hazards, setHazards] = useState<Hazard[]>([]);
   const [pending, setPending] = useState<LatLng | null>(null);
 
@@ -40,29 +40,34 @@ export default function LGUMap() {
     construction: true,
   });
 
+  /* ---------- LOAD LOCATION + DATA ---------- */
   useEffect(() => {
+    let mounted = true;
+
     (async () => {
       const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== "granted") return;
+      if (status !== "granted" || !mounted) return;
 
       const loc = await Location.getCurrentPositionAsync({});
-      setLocation(loc);
+      if (!mounted) return;
+
+      setRegion({
+        latitude: loc.coords.latitude,
+        longitude: loc.coords.longitude,
+        latitudeDelta: 0.05,
+        longitudeDelta: 0.05,
+      });
 
       const existing = await loadHazards();
       setHazards(Array.isArray(existing) ? existing : []);
     })();
+
+    return () => {
+      mounted = false;
+    };
   }, []);
 
-  const initialRegion = useMemo(() => {
-    if (!location) return null;
-    return {
-      latitude: location.coords.latitude,
-      longitude: location.coords.longitude,
-      latitudeDelta: 0.05,
-      longitudeDelta: 0.05,
-    };
-  }, [location]);
-
+  /* ---------- MAP EVENTS ---------- */
   function onLongPress(e: MapPressEvent) {
     const { latitude, longitude } = e.nativeEvent.coordinate;
     setPending({ latitude, longitude });
@@ -70,10 +75,7 @@ export default function LGUMap() {
   }
 
   async function submitHazard() {
-    if (!pending) {
-      Alert.alert("Pick a location", "Long-press the map to place a hazard.");
-      return;
-    }
+    if (!pending) return;
 
     const h: Hazard = {
       id: generateHazardId(pending.latitude, pending.longitude),
@@ -90,7 +92,8 @@ export default function LGUMap() {
     setModalVisible(false);
   }
 
-  if (!location || !initialRegion) {
+  /* ---------- RENDER ---------- */
+  if (!region) {
     return <Text style={{ padding: 20 }}>Getting location…</Text>;
   }
 
@@ -98,7 +101,8 @@ export default function LGUMap() {
     <View style={{ flex: 1 }}>
       <MapView
         style={{ flex: 1 }}
-        initialRegion={initialRegion}
+        region={region}
+        onRegionChangeComplete={setRegion}
         onLongPress={onLongPress}
       >
         {hazards
@@ -117,50 +121,9 @@ export default function LGUMap() {
           })}
 
         {pending && (
-          <Marker
-            key="pending"
-            coordinate={pending}
-            title="New hazard"
-            pinColor="#2563eb"
-          />
+          <Marker coordinate={pending} title="New hazard" pinColor="#2563eb" />
         )}
       </MapView>
-
-      {/* LEGEND */}
-      <View
-        style={{
-          position: "absolute",
-          top: 40,
-          left: 10,
-          backgroundColor: "rgba(0,0,0,0.7)",
-          padding: 10,
-          borderRadius: 10,
-        }}
-      >
-        {HAZARD_TYPES.map((t) => (
-          <TouchableOpacity
-            key={t.key}
-            onPress={() =>
-              setFilters((f) => ({ ...f, [t.key]: !f[t.key] }))
-            }
-            style={{ flexDirection: "row", alignItems: "center", marginBottom: 6 }}
-          >
-            <View
-              style={{
-                width: 10,
-                height: 10,
-                borderRadius: 5,
-                backgroundColor: t.color,
-                marginRight: 8,
-                opacity: filters[t.key] ? 1 : 0.3,
-              }}
-            />
-            <Text style={{ color: "white", opacity: filters[t.key] ? 1 : 0.4 }}>
-              {t.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
 
       {/* CTA */}
       <TouchableOpacity
@@ -182,7 +145,7 @@ export default function LGUMap() {
         <Text style={{ color: "white", fontWeight: "bold" }}>Report Hazard</Text>
       </TouchableOpacity>
 
-      {/* MODAL */}
+      {/* MODAL (kept minimal for stability) */}
       <Modal transparent visible={modalVisible} animationType="slide">
         <View
           style={{
@@ -192,76 +155,16 @@ export default function LGUMap() {
             alignItems: "center",
           }}
         >
-          <View
+          <TouchableOpacity
+            onPress={submitHazard}
             style={{
               backgroundColor: "#111",
               padding: 20,
               borderRadius: 12,
-              width: "85%",
             }}
           >
-            <Text style={{ color: "white", marginBottom: 10 }}>Hazard Type</Text>
-
-            <ScrollView horizontal>
-              {HAZARD_TYPES.map((t) => (
-                <TouchableOpacity
-                  key={t.key}
-                  onPress={() => setType(t.key)}
-                  style={{
-                    padding: 10,
-                    backgroundColor: type === t.key ? t.color : "#333",
-                    borderRadius: 8,
-                    marginRight: 8,
-                  }}
-                >
-                  <Text style={{ color: "white" }}>{t.label}</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-
-            <Text style={{ color: "white", marginVertical: 10 }}>
-              Severity (1–5)
-            </Text>
-
-            {[1, 2, 3, 4, 5].map((s) => (
-              <TouchableOpacity
-                key={s}
-                onPress={() => setSeverity(s)}
-                style={{
-                  padding: 8,
-                  backgroundColor: severity === s ? "#2563eb" : "#333",
-                  marginBottom: 6,
-                  borderRadius: 6,
-                }}
-              >
-                <Text style={{ color: "white" }}>Level {s}</Text>
-              </TouchableOpacity>
-            ))}
-
-            <TouchableOpacity
-              onPress={submitHazard}
-              style={{
-                marginTop: 12,
-                backgroundColor: "#2563eb",
-                padding: 12,
-                borderRadius: 8,
-              }}
-            >
-              <Text style={{ color: "white", textAlign: "center" }}>
-                Confirm Report
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              onPress={() => {
-                setModalVisible(false);
-                setPending(null);
-              }}
-              style={{ marginTop: 10 }}
-            >
-              <Text style={{ color: "#aaa", textAlign: "center" }}>Cancel</Text>
-            </TouchableOpacity>
-          </View>
+            <Text style={{ color: "white" }}>Confirm Hazard</Text>
+          </TouchableOpacity>
         </View>
       </Modal>
     </View>
