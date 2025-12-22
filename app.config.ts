@@ -6,34 +6,41 @@ const config: ExpoConfig = {
   scheme: "roadsense",
   version: "1.0.0",
   orientation: "portrait",
+
   icon: "./assets/images/icon.png",
-  userInterfaceStyle: "light",
+
   splash: {
     image: "./assets/images/icon.png",
     resizeMode: "contain",
-    backgroundColor: "#ffffff"
+    backgroundColor: "#ffffff",
   },
+
   updates: {
-    fallbackToCacheTimeout: 0
+    fallbackToCacheTimeout: 0,
   },
+
   assetBundlePatterns: ["**/*"],
+
   android: {
     package: "com.rbbrenz.roadsensemvp",
     adaptiveIcon: {
       foregroundImage: "./assets/images/adaptive-icon.png",
-      backgroundColor: "#ffffff"
-    }
+      backgroundColor: "#ffffff",
+    },
   },
+
   ios: {
-    supportsTablet: true
+    bundleIdentifier: "com.rbbrenz.roadsensemvp",
+    supportsTablet: true,
   },
+
   extra: {
     supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL,
     supabaseAnonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY,
     eas: {
-      projectId: "6fe99bf7-ee02-4fc1-9164-3f00abe77805"
-    }
-  }
+      projectId: "6fe99bf7-ee02-4fc1-9164-3f00abe77805",
+    },
+  },
 };
 
 export default config;
