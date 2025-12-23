@@ -1,46 +1,34 @@
-import { ExpoConfig } from "expo/config";
+import 'dotenv/config';
 
-const config: ExpoConfig = {
-  name: "RoadSense PH",
-  slug: "roadsense-mvp",
-  scheme: "roadsense",
-  version: "1.0.0",
-  orientation: "portrait",
-
-  icon: "./assets/images/icon.png",
-
-  splash: {
-    image: "./assets/images/icon.png",
-    resizeMode: "contain",
-    backgroundColor: "#ffffff",
-  },
-
-  updates: {
-    fallbackToCacheTimeout: 0,
-  },
-
-  assetBundlePatterns: ["**/*"],
-
-  android: {
-    package: "com.rbbrenz.roadsensemvp",
-    adaptiveIcon: {
-      foregroundImage: "./assets/images/adaptive-icon.png",
-      backgroundColor: "#ffffff",
+export default {
+  expo: {
+    name: 'RoadSense PH',
+    slug: 'roadsense-mvp',
+    scheme: 'roadsense',
+    version: '1.0.0',
+    orientation: 'portrait',
+    icon: './assets/icon.png',
+    splash: {
+      image: './assets/splash.png',
+      resizeMode: 'contain',
+      backgroundColor: '#000000',
     },
-  },
-
-  ios: {
-    bundleIdentifier: "com.rbbrenz.roadsensemvp",
-    supportsTablet: true,
-  },
-
-  extra: {
-    supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL,
-    supabaseAnonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY,
-    eas: {
-      projectId: "6fe99bf7-ee02-4fc1-9164-3f00abe77805",
+    assetBundlePatterns: ['**/*'],
+    ios: {
+      supportsTablet: true,
+    },
+    android: {
+      package: 'com.rbbrenz.roadsensemvp',
+      config: {
+        googleMaps: {
+          apiKey: 'AIzaSyAfJsplsC9fNO4MnBBu8BdhAzKlMi20ZZw',
+        },
+      },
+    },
+    extra: {
+      SUPABASE_URL: process.env.SUPABASE_URL,
+      SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY,
+      MAPBOX_TOKEN: process.env.NEXT_PUBLIC_MAPBOX_TOKEN,
     },
   },
 };
-
-export default config;

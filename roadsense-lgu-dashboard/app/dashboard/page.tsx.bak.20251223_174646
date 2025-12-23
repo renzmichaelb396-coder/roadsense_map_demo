@@ -1,0 +1,219 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import { supabase } from "@/lib/supabase";
+
+type Hazard = {
+  id: string;
+  type: string;
+  severity: "HIGH" | "MEDIUM" | "LOW";
+  status: "reported" | "resolved";
+  created_at: string;
+  location_label?: string;
+};
+
+const severityRank = { HIGH: 3, MEDIUM: 2, LOW: 1 };
+
+export default function Dashboard() {
+  const [hazards, setHazards] = useState<Hazard[]>([]);
+  const [showLow, setShowLow] = useState(false);
+
+  useEffect(() => {
+    supabase
+      .from("hazards")
+      .select("*")
+      .then(({ data }) => {
+        if (data) setHazards(data as Hazard[]);
+      });
+  }, []);
+
+  const rows = useMemo(() => {
+    const now = Date.now();
+
+    return hazards
+      .map(h => {
+        const ageDays = Math.floor(
+          (now - new Date(h.created_at).getTime()) / 86400000
+        );
+
+        let risk = "OK";
+        if (ageDays >= 14) risk = "OVERDUE";
+        else if (ageDays >= 7) risk = "AT RISK";
+
+        return {
+          ...h,
+          type: h.type.toUpperCase(),
+          severity: h.severity.toUpperCase() as Hazard["severity"],
+          ageDays,
+          risk,
+        };
+      })
+      .filter(h => showLow || h.severity !== "LOW")
+      .sort((a, b) => {
+        if (severityRank[b.severity] !== severityRank[a.severity]) {
+          return severityRank[b.severity] - severityRank[a.severity];
+        }
+        return b.ageDays - a.ageDays;
+      });
+  }, [hazards, showLow]);
+
+  const counts = useMemo(() => {
+    return {
+      HIGH: rows.filter(h => h.severity === "HIGH" && h.status === "reported").length,
+      MEDIUM: rows.filter(h => h.severity === "MEDIUM" && h.status === "reported").length,
+      LOW: rows.filter(h => h.severity === "LOW" && h.status === "reported").length,
+      OVERDUE: rows.filter(h => h.risk === "OVERDUE" && h.status === "reported").length,
+    };
+  }, [rows]);
+
+  function exportCSV() {
+    const header = [
+      "Type",
+      "Severity",
+      "Status",
+      "AgeDays",
+      "Risk",
+      "Location",
+      "ReportedAt",
+    ];
+
+    const csv = [
+      header.join(","),
+      ...rows.map(h =>
+        [
+          h.type,
+          h.severity,
+          h.status,
+          h.ageDays,
+          h.risk,
+          h.location_label ?? "",
+          new Date(h.created_at).toISOString(),
+        ].join(",")
+      ),
+    ].join("\n");
+
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "roadsense-hazards.csv";
+    a.click();
+
+    URL.revokeObjectURL(url);
+  }
+
+  return (
+    <main style={{ padding: 32, background: "#000", minHeight: "100vh", color: "#fff" }}>
+      <h1 style={{ fontSize: 28, fontWeight: 900 }}>Road Hazards — LGU Dashboard</h1>
+      <p style={{ opacity: 0.6 }}>
+        Decision-grade, read-only operational view
+      </p>
+
+      <a href="/dashboard/map" style={{ color: "#60a5fa", fontWeight: 700 }}>
+        View Map →
+      </a>
+
+      {/* SUMMARY */}
+      <div style={{ display: "flex", gap: 16, marginTop: 24 }}>
+        <Stat label="HIGH" value={counts.HIGH} color="#dc2626" />
+        <Stat label="MEDIUM" value={counts.MEDIUM} color="#f59e0b" />
+        <Stat label="LOW" value={counts.LOW} color="#16a34a" />
+        <Stat label="OVERDUE" value={counts.OVERDUE} color="#ef4444" />
+      </div>
+
+      {/* CONTROLS */}
+      <div style={{ display: "flex", gap: 16, marginTop: 24 }}>
+        <label>
+          <input
+            type="checkbox"
+            checked={showLow}
+            onChange={e => setShowLow(e.target.checked)}
+          />{" "}
+          Show LOW severity
+        </label>
+
+        <button
+          onClick={exportCSV}
+          style={{
+            background: "#111",
+            color: "#fff",
+            padding: "8px 14px",
+            borderRadius: 10,
+            fontWeight: 800,
+            cursor: "pointer",
+          }}
+        >
+          Export CSV
+        </button>
+      </div>
+
+      {/* TABLE */}
+      <table style={{ width: "100%", marginTop: 24, borderCollapse: "collapse" }}>
+        <thead>
+          <tr>
+            <th align="left">Priority</th>
+            <th align="left">Type</th>
+            <th align="left">Severity</th>
+            <th align="left">Status</th>
+            <th align="left">Age</th>
+            <th align="left">Risk</th>
+            <th align="left">Reported</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(h => (
+            <tr
+              key={h.id}
+              style={{
+                borderTop: "1px solid #222",
+                opacity: h.status === "resolved" ? 0.5 : 1,
+              }}
+            >
+              <td>{h.severity === "HIGH" ? "⚠️ HIGH" : h.severity}</td>
+              <td>{h.type}</td>
+              <td style={{ fontWeight: 800 }}>{h.severity}</td>
+              <td>{h.status.toUpperCase()}</td>
+              <td>{h.ageDays}d</td>
+              <td
+                style={{
+                  fontWeight: 800,
+                  color:
+                    h.risk === "OVERDUE"
+                      ? "#ef4444"
+                      : h.risk === "AT RISK"
+                      ? "#f59e0b"
+                      : "#16a34a",
+                }}
+              >
+                {h.risk}
+              </td>
+              <td>{new Date(h.created_at).toLocaleString()}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      <p style={{ marginTop: 16, fontSize: 12, opacity: 0.5 }}>
+        Resolved hazards remain visible for audit trail and accountability.
+      </p>
+    </main>
+  );
+}
+
+function Stat({
+  label,
+  value,
+  color,
+}: {
+  label: string;
+  value: number;
+  color: string;
+}) {
+  return (
+    <div style={{ padding: 16, borderRadius: 12, background: "#111", minWidth: 140 }}>
+      <div style={{ fontSize: 12, opacity: 0.6 }}>{label}</div>
+      <div style={{ fontSize: 28, fontWeight: 900, color }}>{value}</div>
+    </div>
+  );
+}

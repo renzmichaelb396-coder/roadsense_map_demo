@@ -1,3 +1,1 @@
-export default function LGUMapIOSDisabled() {
-  return null;
-}
+export { default } from "./map.base";
