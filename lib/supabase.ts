@@ -1,26 +1,18 @@
-import { createClient, SupabaseClient } from "@supabase/supabase-js";
-import Constants from "expo-constants";
+import { createClient } from "@supabase/supabase-js";
 
-let _client: SupabaseClient | null = null;
+const url =
+  process.env.EXPO_PUBLIC_SUPABASE_URL ||
+  process.env.NEXT_PUBLIC_SUPABASE_URL ||
+  "";
 
-export function getSupabase(): SupabaseClient | null {
-  if (_client) return _client;
+const anon =
+  process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ||
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+  "";
 
-  const extra =
-    Constants.expoConfig?.extra ??
-    (Constants.manifest as any)?.extra ??
-    {};
-
-  const url = extra.supabaseUrl;
-  const anonKey = extra.supabaseAnonKey;
-
-  if (!url || !anonKey) {
-    console.warn(
-      "[Supabase] Missing env. Running in offline / local-only mode."
-    );
-    return null;
-  }
-
-  _client = createClient(url, anonKey);
-  return _client;
-}
+export const supabase =
+  url && anon
+    ? createClient(url, anon, {
+        auth: { persistSession: false, autoRefreshToken: false },
+      })
+    : null;

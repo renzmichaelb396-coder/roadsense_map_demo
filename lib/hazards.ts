@@ -1,321 +1,175 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { getSupabase } from "./supabase";
+import { supabase } from "@/lib/supabase";
 
-export const SCHEMA_VERSION = 3;
+/* ================= TYPES ================= */
 
-export type HazardStatus = "reported" | "verified" | "in_progress" | "resolved";
+export type HazardStatus = "reported" | "resolved";
 
 export type Hazard = {
   id: string;
   latitude: number;
   longitude: number;
   type: string;
-  severity: number; // 1..3
+  severity: number; // 1=LOW 2=MED 3=HIGH
   status: HazardStatus;
   createdAt: number;
   updatedAt: number;
 };
 
-type Store = {
-  schemaVersion: number;
-  hazards: Hazard[];
-};
+/* ================= CONST ================= */
 
 const STORAGE_KEY = "ROADSENSE_HAZARDS";
 
-/* ---------- utils ---------- */
+/* ================= UTILS ================= */
 
 function now(): number {
   return Date.now();
 }
 
-function isUUID(id: string): boolean {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-    id
-  );
+function uuid(): string {
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
 }
 
-/**
- * Deterministic UUIDv4 generator (no deps).
- * - Uses crypto.getRandomValues when available (Expo / modern JS)
- * - Falls back to Math.random (still unique enough for local-only emergency)
- */
-function generateUUID(): string {
-  const bytes = new Uint8Array(16);
-
-  // crypto-backed if available
-  const cryptoObj: any = (globalThis as any).crypto;
-  if (cryptoObj?.getRandomValues) {
-    cryptoObj.getRandomValues(bytes);
-  } else {
-    for (let i = 0; i < 16; i++) bytes[i] = Math.floor(Math.random() * 256);
-  }
-
-  // Per RFC4122 v4
-  bytes[6] = (bytes[6] & 0x0f) | 0x40;
-  bytes[8] = (bytes[8] & 0x3f) | 0x80;
-
-  const hex = Array.from(bytes, b => b.toString(16).padStart(2, "0")).join("");
-
-  return (
-    hex.slice(0, 8) +
-    "-" +
-    hex.slice(8, 12) +
-    "-" +
-    hex.slice(12, 16) +
-    "-" +
-    hex.slice(16, 20) +
-    "-" +
-    hex.slice(20)
-  );
-}
-
-function toEpoch(v: any): number {
-  if (typeof v === "number") return v;
-  const t = Date.parse(v);
-  return Number.isNaN(t) ? now() : t;
-}
-
-/* ---------- severity helpers ---------- */
-
-function severityNumToStr(n: number): "LOW" | "MEDIUM" | "HIGH" {
-  if (n === 3) return "HIGH";
-  if (n === 2) return "MEDIUM";
+function sevNumToText(sev: number): "LOW" | "MEDIUM" | "HIGH" {
+  if (sev >= 3) return "HIGH";
+  if (sev === 2) return "MEDIUM";
   return "LOW";
 }
 
-function severityStrToNum(s: any): number {
-  if (s === "HIGH") return 3;
-  if (s === "MEDIUM") return 2;
-  return 1;
-}
+/* ================= LOCAL API ================= */
 
-/* ---------- PostGIS ---------- */
-function toGeogPointWkt(lat: number, lng: number) {
-  return `POINT(${lng} ${lat})`;
-}
-
-/* ---------- storage ---------- */
-
-/**
- * IMPORTANT LIPAT INVARIANT:
- * - Never silently drop hazards.
- * - If legacy IDs exist, migrate them (regenerate UUID) instead of filtering out.
- * - Ensure no duplicate IDs in the final store.
- */
-async function sanitizeAndMigrate(store: Store): Promise<Store> {
-  const seen = new Set<string>();
-  const migrated: Hazard[] = [];
-
-  for (const raw of Array.isArray(store.hazards) ? store.hazards : []) {
-    const base: Hazard = {
-      id: typeof raw?.id === "string" ? raw.id : "",
-      latitude: Number(raw?.latitude),
-      longitude: Number(raw?.longitude),
-      type: String(raw?.type ?? "unknown"),
-      severity: Number(raw?.severity ?? 1),
-      status: (raw?.status ?? "reported") as HazardStatus,
-      createdAt: toEpoch(raw?.createdAt ?? raw?.created_at ?? now()),
-      updatedAt: toEpoch(raw?.updatedAt ?? raw?.updated_at ?? raw?.createdAt ?? now()),
-    };
-
-    // migrate invalid IDs (do NOT drop)
-    if (!isUUID(base.id)) base.id = generateUUID();
-
-    // guarantee uniqueness (no collisions)
-    while (seen.has(base.id)) base.id = generateUUID();
-    seen.add(base.id);
-
-    migrated.push(base);
-  }
-
-  return { schemaVersion: SCHEMA_VERSION, hazards: migrated };
-}
-
-async function readStore(): Promise<Store> {
+async function readLocal(): Promise<Hazard[]> {
   const raw = await AsyncStorage.getItem(STORAGE_KEY);
-  if (!raw) return { schemaVersion: SCHEMA_VERSION, hazards: [] };
-
+  if (!raw) return [];
   try {
     const parsed = JSON.parse(raw);
-    const store: Store = {
-      schemaVersion: SCHEMA_VERSION,
-      hazards: Array.isArray(parsed?.hazards) ? parsed.hazards : [],
-    };
-    return await sanitizeAndMigrate(store);
-  } catch {
-    return { schemaVersion: SCHEMA_VERSION, hazards: [] };
-  }
-}
-
-async function writeStore(hazards: Hazard[]) {
-  await AsyncStorage.setItem(
-    STORAGE_KEY,
-    JSON.stringify({ schemaVersion: SCHEMA_VERSION, hazards })
-  );
-}
-
-/* ---------- cloud ---------- */
-
-async function loadFromCloud(): Promise<Hazard[]> {
-  const supabase = getSupabase();
-  if (!supabase) return [];
-
-  const { data, error } = await supabase
-    .from("hazards")
-    .select(
-      "id,latitude,longitude,type,severity,status,created_at,updated_at,is_deleted,deleted_at"
-    );
-
-  if (error || !Array.isArray(data)) return [];
-
-  const mapped = data
-    .filter(r => !r.is_deleted && !r.deleted_at)
-    .map(r => ({
-      id: String(r.id),
-      latitude: Number(r.latitude),
-      longitude: Number(r.longitude),
-      type: String(r.type),
-      severity: severityStrToNum(r.severity),
-      status: (r.status ?? "reported") as HazardStatus,
-      createdAt: toEpoch(r.created_at),
-      updatedAt: toEpoch(r.updated_at ?? r.created_at),
-    }));
-
-  // Keep only UUID-like IDs, but do NOT crash if remote has bad rows.
-  // Remote bad IDs are ignored; local migration already preserves local data.
-  return mapped.filter(h => isUUID(h.id));
-}
-
-/* ---------- merge ---------- */
-
-function mergeLWW(local: Hazard[], remote: Hazard[]): Hazard[] {
-  const map = new Map<string, Hazard>();
-  for (const h of local) map.set(h.id, h);
-  for (const h of remote) {
-    const e = map.get(h.id);
-    if (!e || h.updatedAt > e.updatedAt) map.set(h.id, h);
-  }
-  return Array.from(map.values()).sort((a, b) => b.createdAt - a.createdAt);
-}
-
-/* ---------- public API ---------- */
-
-export async function loadHazards(): Promise<Hazard[]> {
-  try {
-    const store = await readStore();
-    const cloud = await loadFromCloud();
-    const merged = mergeLWW(store.hazards, cloud);
-
-    // Persist merged + migrated store so future reads are stable
-    await writeStore(merged);
-    return merged;
+    return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
   }
 }
 
-/**
- * Pull-only refresh used by app/_layout.tsx on app resume.
- * Keep this stable to avoid runtime crashes.
- */
-export async function refreshHazardsFromCloud(): Promise<Hazard[]> {
-  return loadHazards();
+async function writeLocal(hazards: Hazard[]): Promise<void> {
+  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(hazards));
 }
 
-/**
- * ADD (append-only, deterministic)
- * - Guarantees UUID
- * - Guarantees no ID collisions
- * - Writes local first
- * - Cloud insert best-effort
- */
-export async function addHazard(h: Omit<Hazard, "updatedAt">): Promise<boolean> {
-  const store = await readStore();
+/* ================= PUBLIC API ================= */
 
-  // enforce ID validity + uniqueness
-  let id = typeof (h as any)?.id === "string" ? (h as any).id : "";
-  if (!isUUID(id)) id = generateUUID();
-  while (store.hazards.some(x => x.id === id)) id = generateUUID();
+export async function fetchHazards(): Promise<Hazard[]> {
+  // GOALSS v1:
+  // Prefer cloud read when available; fallback to local if offline/error.
+  if (supabase) {
+    try {
+      // If you already have hazards_lgu_view, it should expose lat/lng + status fields.
+      // If it doesn't, this will fail and we will fallback to local.
+      const { data, error } = await supabase
+        .from("hazards_lgu_view")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(1000);
 
-  const hazard: Hazard = { ...h, id, updatedAt: now() };
+      if (!error && Array.isArray(data)) {
+        const mapped: Hazard[] = data.map((r: any) => {
+          const sevText = String(r.severity || "LOW").toUpperCase();
+          const sevNum = sevText === "HIGH" ? 3 : sevText === "MEDIUM" ? 2 : 1;
 
-  // STRICT APPEND-ONLY: never filter out existing hazards
-  const next = [hazard, ...store.hazards];
-  await writeStore(next);
+          return {
+            id: String(r.id),
+            latitude: Number(r.latitude ?? r.lat ?? 0),
+            longitude: Number(r.longitude ?? r.lng ?? 0),
+            type: String(r.type ?? "pothole"),
+            severity: sevNum,
+            status: r.status === "resolved" ? "resolved" : "reported",
+            createdAt: r.created_at ? new Date(r.created_at).getTime() : now(),
+            updatedAt: r.updated_at ? new Date(r.updated_at).getTime() : now(),
+          };
+        });
 
-  // CLOUD INSERT (best-effort)
-  const supabase = getSupabase();
-  if (!supabase || !isUUID(hazard.id)) {
-    console.warn("[Hazards] Skipping cloud insert (local-only)");
-    return true;
+        // cache it locally so the app still works offline
+        await writeLocal(mapped);
+        return mapped;
+      }
+    } catch {
+      // ignore and fall back
+    }
   }
 
-  const { error } = await supabase.from("hazards").insert({
-    id: hazard.id,
-    latitude: hazard.latitude,
-    longitude: hazard.longitude,
-    location: toGeogPointWkt(hazard.latitude, hazard.longitude),
-    type: hazard.type,
-    severity: severityNumToStr(hazard.severity),
-    status: hazard.status,
-    created_at: new Date(hazard.createdAt).toISOString(),
-    updated_at: new Date(hazard.updatedAt).toISOString(),
-    is_deleted: false,
-  });
-
-  if (error) {
-    console.warn("[Hazards] Cloud insert failed:", error.message);
-  }
-
-  return true;
+  return readLocal();
 }
 
-export async function updateHazardStatus(
-  id: string,
-  status: HazardStatus
-): Promise<void> {
-  const store = await readStore();
-  const updatedAt = now();
+export async function createHazard(input: {
+  latitude: number;
+  longitude: number;
+  severity: number;
+  type?: string;
+}): Promise<void> {
+  // 1) Local write first = instant UX
+  const hazards = await readLocal();
 
-  const next = store.hazards.map(h =>
-    h.id === id ? { ...h, status, updatedAt } : h
+  const hazard: Hazard = {
+    id: uuid(),
+    latitude: input.latitude,
+    longitude: input.longitude,
+    severity: input.severity,
+    type: input.type ?? "pothole",
+    status: "reported",
+    createdAt: now(),
+    updatedAt: now(),
+  };
+
+  const nextHazards = [hazard, ...hazards];
+  await writeLocal(nextHazards);
+
+  // 2) Fire-and-forget cloud push (GOALSS v1)
+  if (supabase) {
+    try {
+      const severity_text = sevNumToText(input.severity);
+      const hazard_type = input.type ?? "pothole";
+
+      const { error } = await supabase.rpc("insert_hazard_report", {
+        lat: input.latitude,
+        lng: input.longitude,
+        hazard_type,
+        severity_text,
+      });
+
+      if (error) {
+        console.warn("[hazards] cloud insert failed:", error.message);
+      }
+    } catch (e: any) {
+      console.warn("[hazards] cloud insert exception:", e?.message ?? e);
+    }
+  }
+}
+
+export async function resolveHazard(id: string): Promise<void> {
+  // GOALSS v1 SECURITY:
+  // We keep resolve LOCAL-ONLY for now.
+  // Do NOT allow anonymous updates on production hazards.
+  const hazards = await readLocal();
+
+  const nextHazards = hazards.map((h) =>
+    h.id === id ? { ...h, status: "resolved", updatedAt: now() } : h
   );
-  await writeStore(next);
 
-  const supabase = getSupabase();
-  if (!supabase || !isUUID(id)) return;
-
-  const { error } = await supabase
-    .from("hazards")
-    .update({ status, updated_at: new Date(updatedAt).toISOString() })
-    .eq("id", id);
-
-  if (error) {
-    console.warn("[Hazards] Status update failed:", error.message);
-  }
+  await writeLocal(nextHazards);
 }
 
-/**
- * DELETE (local-first, deterministic)
- * - Removes from local store immediately
- * - Soft-deletes in cloud best-effort (is_deleted/deleted_at)
- */
 export async function deleteHazard(id: string): Promise<void> {
-  const store = await readStore();
-  const next = store.hazards.filter(h => h.id !== id);
-  await writeStore(next);
+  // GOALSS v1 SECURITY:
+  // Local-only delete for now (same reason).
+  const hazards = await readLocal();
+  const nextHazards = hazards.filter((h) => h.id !== id);
+  await writeLocal(nextHazards);
+}
 
-  const supabase = getSupabase();
-  if (!supabase || !isUUID(id)) return;
+/* ================= CLOUD ================= */
 
-  const deletedAt = new Date(now()).toISOString();
-  const { error } = await supabase
-    .from("hazards")
-    .update({ is_deleted: true, deleted_at: deletedAt })
-    .eq("id", id);
-
-  if (error) {
-    console.warn("[Hazards] Cloud delete failed:", error.message);
-  }
+export async function refreshHazardsFromCloud(): Promise<void> {
+  // warm the cache; ignore errors
+  await fetchHazards();
 }
