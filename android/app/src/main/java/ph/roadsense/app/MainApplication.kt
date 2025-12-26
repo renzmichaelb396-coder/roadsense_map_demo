@@ -1,4 +1,4 @@
-package com.rbbrenz.roadsensemvp
+package ph.roadsense.app
 
 import android.app.Application
 import android.content.res.Configuration
