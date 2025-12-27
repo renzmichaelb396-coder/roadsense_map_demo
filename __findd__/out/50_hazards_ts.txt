@@ -1,0 +1,102 @@
+     1	import { supabase } from "./supabase";
+     2	
+     3	export type Hazard = {
+     4	  id: string;
+     5	  type: string;
+     6	  severity: 1 | 2 | 3;
+     7	  status: "reported" | "resolved";
+     8	  latitude: number;
+     9	  longitude: number;
+    10	  created_at?: string | null;
+    11	};
+    12	
+    13	function toNumber(v: any): number | null {
+    14	  const n = typeof v === "number" ? v : Number(v);
+    15	  return Number.isFinite(n) ? n : null;
+    16	}
+    17	
+    18	function severityToNumber(sev: any): 1 | 2 | 3 {
+    19	  if (sev === 3 || sev === "3" || String(sev).toUpperCase() === "HIGH") return 3;
+    20	  if (sev === 2 || sev === "2" || String(sev).toUpperCase() === "MEDIUM") return 2;
+    21	  return 1;
+    22	}
+    23	
+    24	export async function fetchHazards(): Promise<Hazard[]> {
+    25	  const { data, error } = await supabase
+    26	    .from("hazards_lgu_view")
+    27	    .select("id,type,severity,status,latitude,longitude,created_at")
+    28	    .order("created_at", { ascending: false });
+    29	
+    30	  if (error) throw error;
+    31	
+    32	  const rows = Array.isArray(data) ? data : [];
+    33	  const cleaned: Hazard[] = [];
+    34	
+    35	  for (const r of rows as any[]) {
+    36	    const lat = toNumber(r.latitude);
+    37	    const lng = toNumber(r.longitude);
+    38	    if (lat == null || lng == null) continue;
+    39	
+    40	    cleaned.push({
+    41	      id: String(r.id),
+    42	      type: String(r.type ?? "hazard"),
+    43	      severity: severityToNumber(r.severity),
+    44	      status: r.status === "resolved" ? "resolved" : "reported",
+    45	      latitude: lat,
+    46	      longitude: lng,
+    47	      created_at: r.created_at ?? null,
+    48	    });
+    49	  }
+    50	
+    51	  return cleaned;
+    52	}
+    53	
+    54	export async function createHazard(input: {
+    55	  type: string;
+    56	  severity: 1 | 2 | 3 | "HIGH" | "MEDIUM" | "LOW";
+    57	  status?: "reported" | "resolved";
+    58	  latitude: number;
+    59	  longitude: number;
+    60	}) {
+    61	  const severity =
+    62	    input.severity === 3 || input.severity === "HIGH"
+    63	      ? "HIGH"
+    64	      : input.severity === 2 || input.severity === "MEDIUM"
+    65	      ? "MEDIUM"
+    66	      : "LOW";
+    67	
+    68	  const locationWkt = `SRID=4326;POINT(${input.longitude} ${input.latitude})`;
+    69	
+    70	  const { error } = await supabase.from("hazards").insert({
+    71	    type: input.type,
+    72	    severity,
+    73	    status: input.status ?? "reported",
+    74	    location: locationWkt,
+    75	  });
+    76	
+    77	  if (error) throw error;
+    78	}
+    79	
+    80	export async function resolveHazard(id: string) {
+    81	  const { error } = await supabase
+    82	    .from("hazards")
+    83	    .update({ status: "resolved" })
+    84	    .eq("id", id);
+    85	  if (error) throw error;
+    86	}
+    87	
+    88	export async function deleteHazard(id: string) {
+    89	  const { error } = await supabase.from("hazards").delete().eq("id", id);
+    90	  if (error) throw error;
+    91	}
+    92	
+    93	/* Backward compatibility */
+    94	export async function loadHazards() {
+    95	  return fetchHazards();
+    96	}
+    97	export async function refreshHazardsFromCloud() {
+    98	  return fetchHazards();
+    99	}
+   100	export async function addHazard(h: any) {
+   101	  return createHazard(h);
+   102	}

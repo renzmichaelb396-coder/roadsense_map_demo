@@ -1,0 +1,217 @@
+     1	import React, { useEffect, useMemo, useRef, useState } from "react";
+     2	import { View, Text, Pressable, Dimensions } from "react-native";
+     3	import MapView, { Marker, Region, PROVIDER_GOOGLE } from "react-native-maps";
+     4	import * as Location from "expo-location";
+     5	import { fetchHazards, createHazard, resolveHazard, deleteHazard, Hazard } from "@/lib/hazards";
+     6	
+     7	/* ================= LGU OPS – V3.1 LOCKED ================= */
+     8	
+     9	const DEFAULT_REGION: Region = {
+    10	  latitude: 14.5995,
+    11	  longitude: 120.9842,
+    12	  latitudeDelta: 0.08,
+    13	  longitudeDelta: 0.08,
+    14	};
+    15	
+    16	const SEVERITIES = [
+    17	  { key: "HIGH", color: "#ef4444", size: 22 },
+    18	  { key: "MEDIUM", color: "#f59e0b", size: 18 },
+    19	  { key: "LOW", color: "#10b981", size: 14 },
+    20	] as const;
+    21	
+    22	type SeverityKey = (typeof SEVERITIES)[number]["key"];
+    23	
+    24	function normSeverity(s: any): SeverityKey {
+    25	  const v = String(s ?? "").toUpperCase();
+    26	  if (v === "HIGH" || v === "3") return "HIGH";
+    27	  if (v === "MEDIUM" || v === "MED" || v === "2") return "MEDIUM";
+    28	  return "LOW";
+    29	}
+    30	
+    31	function isResolved(h: any) {
+    32	  return String(h?.status ?? "").toLowerCase() === "resolved";
+    33	}
+    34	
+    35	export default function LGUMap() {
+    36	  const mapRef = useRef<MapView | null>(null);
+    37	
+    38	  const [region, setRegion] = useState<Region>(DEFAULT_REGION);
+    39	  const [hazards, setHazards] = useState<Hazard[]>([]);
+    40	  const [selectedId, setSelectedId] = useState<string | null>(null);
+    41	  const [placing, setPlacing] = useState(false);
+    42	  const [severity, setSeverity] = useState<SeverityKey>("MEDIUM");
+    43	  const [type, setType] = useState("pothole");
+    44	  const [isMutating, setIsMutating] = useState(false);
+    45	  const [showResolved, setShowResolved] = useState(false);
+    46	
+    47	  async function reload() {
+    48	  const next = await fetchHazards();
+    49	  const rows = Array.isArray(next) ? next : [];
+    50	  setHazards(rows);
+    51	
+    52	  if (rows.length > 0 && mapRef.current) {
+    53	    const lats = rows.map(h => h.latitude);
+    54	    const lngs = rows.map(h => h.longitude);
+    55	
+    56	    mapRef.current.fitToCoordinates(
+    57	      rows.map(h => ({ latitude: h.latitude, longitude: h.longitude })),
+    58	      { edgePadding: { top: 80, right: 80, bottom: 280, left: 80 }, animated: true }
+    59	    );
+    60	  }
+    61	}
+    62	
+    63	  useEffect(() => {
+    64	    (async () => {
+    65	      try {
+    66	        const perm = await Location.requestForegroundPermissionsAsync();
+    67	        if (perm.status === "granted") {
+    68	          const loc = await Location.getLastKnownPositionAsync({});
+    69	          if (loc?.coords) {
+    70	            const r = {
+    71	              latitude: loc.coords.latitude,
+    72	              longitude: loc.coords.longitude,
+    73	              latitudeDelta: 0.06,
+    74	              longitudeDelta: 0.06,
+    75	            };
+    76	            setRegion(r);
+    77	          }
+    78	        }
+    79	      } catch {}
+    80	      await reload();
+    81	        mapRef.current?.animateToRegion({ latitude: coord.latitude, longitude: coord.longitude, latitudeDelta: 0.02, longitudeDelta: 0.02 }, 350);
+    82	    })();
+    83	  }, []);
+    84	
+    85	  const visibleHazards = useMemo(
+    86	    () => hazards.filter((h) => (showResolved ? true : !isResolved(h))),
+    87	    [hazards, showResolved]
+    88	  );
+    89	
+    90	  async function confirmPlacement() {
+    91	    if (!mapRef.current || isMutating) return;
+    92	    setIsMutating(true);
+    93	    try {
+    94	      const { width, height } = Dimensions.get("window");
+    95	      const coord = await mapRef.current.coordinateForPoint({
+    96	        x: width / 2,
+    97	        y: height / 2,
+    98	      });
+    99	
+   100	      await createHazard({
+   101	        type,
+   102	        severity,
+   103	        status: "reported",
+   104	        latitude: coord.latitude,
+   105	        longitude: coord.longitude,
+   106	      });
+   107	
+   108	      await reload();
+   109	    } finally {
+   110	      setPlacing(false);
+   111	      setIsMutating(false);
+   112	    }
+   113	  }
+   114	
+   115	  function recenter() {
+   116	  if (!mapRef.current || !region) return;
+   117	  mapRef.current.animateToRegion({
+   118	    latitude: region.latitude,
+   119	    longitude: region.longitude,
+   120	    latitudeDelta: 0.06,
+   121	    longitudeDelta: 0.06,
+   122	  }, 350);
+   123	}
+   124	
+   125	  return (
+   126	    <View style={{ flex: 1 }}>
+   127	      <MapView
+   128	        ref={(r) => (mapRef.current = r)}
+   129	        style={{ flex: 1 }}
+   130	        provider={PROVIDER_GOOGLE}
+   131	        region={region}
+   132	        showsUserLocation
+   133	        showsMyLocationButton={false}
+   134	        onLongPress={() => setPlacing(true)}
+   135	      >
+   136	        {visibleHazards.map((h) => {
+   137	          const sev = normSeverity(h.severity);
+   138	          const meta = SEVERITIES.find((s) => s.key === sev)!;
+   139	          const resolved = isResolved(h);
+   140	
+   141	          return (
+   142	            <Marker
+   143	              key={String(h.id)}
+   144	              coordinate={{ latitude: h.latitude, longitude: h.longitude }}
+   145	              onPress={() => setSelectedId(String(h.id))}
+   146	            >
+   147	              <View
+   148	                style={{
+   149	                  width: meta.size,
+   150	                  height: meta.size,
+   151	                  borderRadius: meta.size / 2,
+   152	                  backgroundColor: resolved ? "transparent" : meta.color,
+   153	                  borderWidth: resolved ? 2 : 0,
+   154	                  borderColor: "#64748b",
+   155	                }}
+   156	              />
+   157	            </Marker>
+   158	          );
+   159	        })}
+   160	
+   161	        {placing && (
+   162	          <Marker coordinate={region}>
+   163	            <View
+   164	              style={{
+   165	                width: 24,
+   166	                height: 24,
+   167	                borderRadius: 12,
+   168	                borderWidth: 3,
+   169	                borderColor: "#2563eb",
+   170	                backgroundColor: "rgba(37,99,235,0.2)",
+   171	              }}
+   172	            />
+   173	          </Marker>
+   174	        )}
+   175	      </MapView>
+   176	{placing && (
+   177	  <View style={{ position: "absolute", top: "50%", left: "50%", marginLeft: -12, marginTop: -12, width: 24, height: 24, borderRadius: 12, borderWidth: 3, borderColor: "#2563eb", backgroundColor: "rgba(37,99,235,0.15)", zIndex: 9999, elevation: 10 }} />
+   178	)}
+   179	
+   180	      {/* Recenter */}
+   181	      <Pressable
+   182	        onPress={recenter}
+   183	        style={{
+   184	          position: "absolute",
+   185	          right: 16,
+   186	          bottom: 110,
+   187	          backgroundColor: "#2563eb",
+   188	          padding: 14,
+   189	          borderRadius: 28,
+   190	        }}
+   191	      >
+   192	        <Text style={{ color: "#fff", fontWeight: "700" }}>◎</Text>
+   193	      </Pressable>
+   194	
+   195	      {/* Confirm placement */}
+   196	      {placing && (
+   197	        <Pressable
+   198	          onPress={confirmPlacement}
+   199	          style={{
+   200	            position: "absolute",
+   201	            bottom: 20,
+   202	            left: 20,
+   203	            right: 20,
+   204	            backgroundColor: "#16a34a",
+   205	            padding: 18,
+   206	            borderRadius: 14,
+   207	            alignItems: "center",
+   208	          }}
+   209	        >
+   210	          <Text style={{ color: "#fff", fontWeight: "800" }}>
+   211	            CONFIRM HAZARD
+   212	          </Text>
+   213	        </Pressable>
+   214	      )}
+   215	    </View>
+   216	  );
+   217	}

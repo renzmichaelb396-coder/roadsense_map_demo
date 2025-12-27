@@ -2,22 +2,27 @@
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
     "strict": true,
+    "noEmit": true,
+    "jsx": "react-native",
+    "types": ["expo-router/types"],
+    "skipLibCheck": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": [
-        "./*"
-      ]
+      "@/*": ["./*"]
     }
   },
   "include": [
-    "**/*.ts",
-    "**/*.tsx"
+    "app",
+    "lib/hazards.ts",
+    "lib/supabase.ts"
   ],
   "exclude": [
-    "node_modules",
-    "_lipat_backups",
-    "backups",
-    "scripts",
-    "**/*.bak"
+    "**/__archives__/**",
+    "**/__runtime_backup__/**",
+    "**/__graveyard__/**",
+    "**/__broken__/**",
+    "**/*.bak",
+    "**/*.backup",
+    "node_modules"
   ]
 }

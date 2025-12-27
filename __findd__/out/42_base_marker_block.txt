@@ -1,0 +1,78 @@
+   140	
+   141	          return (
+   142	            <Marker
+   143	              key={String(h.id)}
+   144	              coordinate={{ latitude: h.latitude, longitude: h.longitude }}
+   145	              onPress={() => setSelectedId(String(h.id))}
+   146	            >
+   147	              <View
+   148	                style={{
+   149	                  width: meta.size,
+   150	                  height: meta.size,
+   151	                  borderRadius: meta.size / 2,
+   152	                  backgroundColor: resolved ? "transparent" : meta.color,
+   153	                  borderWidth: resolved ? 2 : 0,
+   154	                  borderColor: "#64748b",
+   155	                }}
+   156	              />
+   157	            </Marker>
+   158	          );
+   159	        })}
+   160	
+   161	        {placing && (
+   162	          <Marker coordinate={region}>
+   163	            <View
+   164	              style={{
+   165	                width: 24,
+   166	                height: 24,
+   167	                borderRadius: 12,
+   168	                borderWidth: 3,
+   169	                borderColor: "#2563eb",
+   170	                backgroundColor: "rgba(37,99,235,0.2)",
+   171	              }}
+   172	            />
+   173	          </Marker>
+   174	        )}
+   175	      </MapView>
+   176	{placing && (
+   177	  <View style={{ position: "absolute", top: "50%", left: "50%", marginLeft: -12, marginTop: -12, width: 24, height: 24, borderRadius: 12, borderWidth: 3, borderColor: "#2563eb", backgroundColor: "rgba(37,99,235,0.15)", zIndex: 9999, elevation: 10 }} />
+   178	)}
+   179	
+   180	      {/* Recenter */}
+   181	      <Pressable
+   182	        onPress={recenter}
+   183	        style={{
+   184	          position: "absolute",
+   185	          right: 16,
+   186	          bottom: 110,
+   187	          backgroundColor: "#2563eb",
+   188	          padding: 14,
+   189	          borderRadius: 28,
+   190	        }}
+   191	      >
+   192	        <Text style={{ color: "#fff", fontWeight: "700" }}>◎</Text>
+   193	      </Pressable>
+   194	
+   195	      {/* Confirm placement */}
+   196	      {placing && (
+   197	        <Pressable
+   198	          onPress={confirmPlacement}
+   199	          style={{
+   200	            position: "absolute",
+   201	            bottom: 20,
+   202	            left: 20,
+   203	            right: 20,
+   204	            backgroundColor: "#16a34a",
+   205	            padding: 18,
+   206	            borderRadius: 14,
+   207	            alignItems: "center",
+   208	          }}
+   209	        >
+   210	          <Text style={{ color: "#fff", fontWeight: "800" }}>
+   211	            CONFIRM HAZARD
+   212	          </Text>
+   213	        </Pressable>
+   214	      )}
+   215	    </View>
+   216	  );
+   217	}

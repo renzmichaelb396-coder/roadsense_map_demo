@@ -1,0 +1,13 @@
+app/lgu/map.base.tsx.bak-broken:205:        <Text style={{ color: "white", fontWeight: "900" }}>LGU HAZARD OPS</Text>
+app/lgu/map.base.v2.locked.tsx:157:          LGU HAZARD OPS
+app/lgu/map.base.pre_lgu_ops_backup.tsx:139:        <Text style={styles.headerTitle}>LGU HAZARD OPS</Text>
+app/lgu/map.base.tsx.bak-report-broken:168:        <Text style={{ color: "white", fontWeight: "900" }}>LGU HAZARD OPS</Text>
+app/lgu/map.base.tsx:270:          LGU HAZARD OPS
+app/lgu/map.base.tsx.bak-before-v4:186:        <Text style={{ color: "white", fontWeight: "900" }}>LGU HAZARD OPS</Text>
+app/lgu/map.base.tsx.bak-ux-20251226-164524:247:        LGU HAZARD OPS
+app/lgu/map.base.tsx.bak-v2-stable:258:      <Text style={{ color: "white", fontWeight: "900", letterSpacing: 0.5 }}>LGU HAZARD OPS</Text>
+app/lgu/__runtime_backup__/map.base.v3_1.locked.before_controlled_region.1766761900.bak:228:          <Text style={{ color: "white", fontWeight: "900", fontSize: 16 }}>LGU HAZARD OPS</Text>
+app/lgu/__runtime_backup__/map.base.v3.locked.tsx.20251226-224408.bak:270:          LGU HAZARD OPS
+app/lgu/__runtime_backup__/map.base.v3.locked.debug.1766760763.bak:270:          LGU HAZARD OPS
+app/lgu/__runtime_backup__/map.base.v3.locked.before_FINAL_FIX.1766761601.bak:270:          LGU HAZARD OPS
+app/lgu/__runtime_backup__/map.base.v3.locked.before_marker_fix.1766761534.bak:270:          LGU HAZARD OPS

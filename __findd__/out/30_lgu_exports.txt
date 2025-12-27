@@ -1,3 +1,13 @@
+----- app/lgu/map.tsx -----
+export { default } from "./map.base.v3_1.locked";
+
+----- app/lgu/map.android.tsx -----
+export { default } from "./map.base.v3_1.locked";
+
+----- app/lgu/map.ios.tsx -----
+export { default } from "./map.base.v3_1.locked";
+
+----- app/lgu/map.web.tsx -----
 import { useEffect, useState } from "react";
 import Map, { Marker } from "react-map-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
@@ -75,3 +85,4 @@ export default function LGUWebMap() {
     </View>
   );
 }
+

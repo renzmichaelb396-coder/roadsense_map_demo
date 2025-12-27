@@ -1,0 +1,11 @@
+app/lgu/map.base.step2.preplacing.backup.tsx:193:            + REPORT HAZARD
+app/lgu/map.base.tsx.bak-ux-20251226-164524:293:          + REPORT HAZARD
+app/lgu/map.base.v1.backup.tsx:193:            + REPORT HAZARD
+app/lgu/map.base.tsx:350:          + REPORT HAZARD
+app/lgu/map.base.tsx.bak-report-broken:192:            + REPORT HAZARD
+app/lgu/map.base.tsx.bak-v2-stable:303:          + REPORT HAZARD
+app/lgu/__runtime_backup__/map.base.v3.locked.debug.1766760763.bak:350:          + REPORT HAZARD
+app/lgu/__runtime_backup__/map.base.v3.locked.before_marker_fix.1766761534.bak:350:          + REPORT HAZARD
+app/lgu/__runtime_backup__/map.base.v3.locked.before_FINAL_FIX.1766761601.bak:350:          + REPORT HAZARD
+app/lgu/__runtime_backup__/map.base.v3_1.locked.before_controlled_region.1766761900.bak:279:            <Text style={{ color: "white", fontWeight: "900", fontSize: 18 }}>+ REPORT HAZARD</Text>
+app/lgu/__runtime_backup__/map.base.v3.locked.tsx.20251226-224408.bak:350:          + REPORT HAZARD

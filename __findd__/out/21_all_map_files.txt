@@ -1,0 +1,1674 @@
+app/(tabs)/map.tsx
+export { default } from "../lgu/map";
+app/(tabs)/map.ios.tsx
+export { default } from "../lgu/map";
+app/(tabs)/map.web.tsx
+export { default } from "../lgu/map";
+app/(tabs)/map.android.tsx
+export { default } from "../lgu/map";
+app/lgu/map.base.pre_lgu_ops_backup.tsx
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { View, Text, Pressable, Dimensions, StyleSheet } from "react-native";
+import MapView, { Marker, Region } from "react-native-maps";
+import * as Location from "expo-location";
+import { addHazard, loadHazards, deleteHazard, updateHazardStatus, Hazard } from "@/lib/hazards";
+
+const DEFAULT_REGION: Region = {
+  latitude: 14.5995,
+  longitude: 120.9842,
+  latitudeDelta: 0.08,
+  longitudeDelta: 0.08,
+};
+
+const SEVERITY = {
+  3: { label: "HIGH", color: "#dc2626" },
+  2: { label: "MED", color: "#f59e0b" },
+  1: { label: "LOW", color: "#16a34a" },
+} as const;
+
+const TYPE_LABEL: Record<string, string> = {
+  pothole: "P",
+  flood: "F",
+  crack: "C",
+  debris: "D",
+  construction: "X",
+};
+
+function LGUMarker({ type, severity, status }: { type: string; severity: number; status: string }) {
+  const active = status !== "resolved";
+  const color = active ? SEVERITY[severity as 1 | 2 | 3]?.color ?? "#2563eb" : "#9ca3af";
+  return (
+    <View
+      style={[
+        styles.marker,
+        {
+          backgroundColor: color,
+          opacity: active ? 1 : 0.55,
+          transform: [{ scale: active ? 1 : 0.85 }],
+          borderStyle: active ? "solid" : "dashed",
+        },
+      ]}
+    >
+      <Text style={styles.markerText}>{TYPE_LABEL[type] ?? "?"}</Text>
+    </View>
+  );
+}
+
+export default function LGUMap() {
+  const mapRef = useRef<MapView | null>(null);
+
+  const [region, setRegion] = useState(DEFAULT_REGION);
+  const [hazards, setHazards] = useState<Hazard[]>([]);
+  const [selected, setSelected] = useState<Hazard | null>(null);
+
+  const [placing, setPlacing] = useState(false);
+  const [severity, setSeverity] = useState<1 | 2 | 3>(3);
+  const [type, setType] = useState("pothole");
+  const [showResolved, setShowResolved] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const loc = await Location.getLastKnownPositionAsync({});
+        if (loc?.coords) {
+          setRegion({
+            ...DEFAULT_REGION,
+            latitude: loc.coords.latitude,
+            longitude: loc.coords.longitude,
+          });
+        }
+      } catch {}
+
+      try {
+        const next = await loadHazards();
+        setHazards(Array.isArray(next) ? next : []);
+      } catch {
+        setHazards([]);
+      }
+    })();
+  }, []);
+
+  const visible = useMemo(
+    () => hazards.filter((h) => (showResolved ? true : h.status !== "resolved")),
+    [hazards, showResolved]
+  );
+
+  function recenter() {
+    mapRef.current?.animateToRegion(region, 400);
+  }
+
+  async function refresh() {
+    const next = await loadHazards();
+    setHazards(Array.isArray(next) ? next : []);
+  }
+
+  async function confirmPlacement() {
+    if (!mapRef.current) return;
+    try {
+      const { width, height } = Dimensions.get("window");
+      const coord = await mapRef.current.coordinateForPoint({ x: width / 2, y: height / 2 });
+
+      const id =
+        (global as any)?.crypto?.randomUUID?.() ??
+        `hz_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+
+      await addHazard({
+        id,
+        latitude: coord.latitude,
+        longitude: coord.longitude,
+        type,
+        severity,
+        status: "active",
+        createdAt: Date.now(),
+      });
+
+      await refresh();
+    } finally {
+      setPlacing(false);
+    }
+  }
+
+  async function resolveSelected() {
+    if (!selected) return;
+    await updateHazardStatus(selected.id, "resolved");
+    setSelected(null);
+    await refresh();
+  }
+
+  async function deleteSelected() {
+    if (!selected) return;
+    await deleteHazard(selected.id);
+    setSelected(null);
+    await refresh();
+  }
+
+  return (
+    <View style={{ flex: 1 }}>
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>LGU HAZARD OPS</Text>
+        <Pressable onPress={() => setShowResolved((v) => !v)}>
+          <Text style={styles.toggle}>Resolved: {showResolved ? "ON" : "OFF"}</Text>
+        </Pressable>
+      </View>
+
+      <MapView
+        ref={mapRef}
+        style={{ flex: 1 }}
+        initialRegion={region}
+        onLongPress={() => {
+          setSelected(null);
+          setPlacing(true);
+        }}
+      >
+        {visible.map((h) => (
+          <Marker
+            key={`${h.id}-${h.status}`}
+            coordinate={{ latitude: h.latitude, longitude: h.longitude }}
+            onPress={() => setSelected(h)}
+          >
+            <LGUMarker type={(h as any).type} severity={(h as any).severity} status={(h as any).status ?? "active"} />
+          </Marker>
+        ))}
+      </MapView>
+
+      <Pressable style={styles.recenter} onPress={recenter}>
+        <Text style={styles.recenterText}>◎ RECENTER</Text>
+      </Pressable>
+
+      {placing && (
+        <View style={styles.sheet}>
+          <Text style={styles.sheetTitle}>Report Hazard (LGU)</Text>
+
+          <View style={styles.row}>
+            {[3, 2, 1].map((s) => (
+              <Pressable
+                key={s}
+                onPress={() => setSeverity(s as 1 | 2 | 3)}
+                style={[styles.chip, severity === s && { backgroundColor: SEVERITY[s as 1 | 2 | 3].color }]}
+              >
+                <Text style={styles.chipText}>{SEVERITY[s as 1 | 2 | 3].label}</Text>
+              </Pressable>
+            ))}
+          </View>
+
+          <View style={styles.row}>
+            {Object.keys(TYPE_LABEL).map((t) => (
+              <Pressable
+                key={t}
+                onPress={() => setType(t)}
+                style={[styles.chip, type === t && { backgroundColor: "#2563eb" }]}
+              >
+                <Text style={styles.chipText}>{t.toUpperCase()}</Text>
+              </Pressable>
+            ))}
+          </View>
+
+          <View style={styles.row}>
+            <Pressable style={styles.cancel} onPress={() => setPlacing(false)}>
+              <Text style={{ color: "white", fontWeight: "800" }}>CANCEL</Text>
+            </Pressable>
+            <Pressable style={styles.confirm} onPress={confirmPlacement}>
+              <Text style={{ color: "white", fontWeight: "900" }}>CONFIRM</Text>
+            </Pressable>
+          </View>
+        </View>
+      )}
+
+      {selected && (
+        <View style={styles.sheet}>
+          <Text style={styles.sheetTitle}>
+            {(selected as any).type?.toUpperCase?.() ?? "HAZARD"} • {(selected as any).status?.toUpperCase?.() ?? "ACTIVE"}
+          </Text>
+
+          <View style={styles.row}>
+            <Pressable style={styles.cancel} onPress={() => setSelected(null)}>
+              <Text style={{ color: "white", fontWeight: "800" }}>CLOSE</Text>
+            </Pressable>
+
+            {(selected as any).status !== "resolved" && (
+              <Pressable style={styles.confirm} onPress={resolveSelected}>
+                <Text style={{ color: "white", fontWeight: "900" }}>RESOLVE</Text>
+              </Pressable>
+            )}
+
+            <Pressable style={styles.delete} onPress={deleteSelected}>
+              <Text style={{ color: "white", fontWeight: "900" }}>DELETE</Text>
+            </Pressable>
+          </View>
+        </View>
+      )}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  header: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+app/lgu/map.base.v3_1.locked.tsx
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { View, Text, Pressable, Dimensions } from "react-native";
+import MapView, { Marker, Region, PROVIDER_GOOGLE } from "react-native-maps";
+import * as Location from "expo-location";
+import { fetchHazards, createHazard, resolveHazard, deleteHazard, Hazard } from "@/lib/hazards";
+
+/* ================= LGU OPS – V3.1 LOCKED ================= */
+
+const DEFAULT_REGION: Region = {
+  latitude: 14.5995,
+  longitude: 120.9842,
+  latitudeDelta: 0.08,
+  longitudeDelta: 0.08,
+};
+
+const SEVERITIES = [
+  { key: "HIGH", color: "#ef4444", size: 22 },
+  { key: "MEDIUM", color: "#f59e0b", size: 18 },
+  { key: "LOW", color: "#10b981", size: 14 },
+] as const;
+
+type SeverityKey = (typeof SEVERITIES)[number]["key"];
+
+function normSeverity(s: any): SeverityKey {
+  const v = String(s ?? "").toUpperCase();
+  if (v === "HIGH" || v === "3") return "HIGH";
+  if (v === "MEDIUM" || v === "MED" || v === "2") return "MEDIUM";
+  return "LOW";
+}
+
+function isResolved(h: any) {
+  return String(h?.status ?? "").toLowerCase() === "resolved";
+}
+
+export default function LGUMap() {
+  const mapRef = useRef<MapView | null>(null);
+
+  const [region, setRegion] = useState<Region>(DEFAULT_REGION);
+  const [hazards, setHazards] = useState<Hazard[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [placing, setPlacing] = useState(false);
+  const [severity, setSeverity] = useState<SeverityKey>("MEDIUM");
+  const [type, setType] = useState("pothole");
+  const [isMutating, setIsMutating] = useState(false);
+  const [showResolved, setShowResolved] = useState(false);
+
+  async function reload() {
+  const next = await fetchHazards();
+  const rows = Array.isArray(next) ? next : [];
+  setHazards(rows);
+
+  if (rows.length > 0 && mapRef.current) {
+    const lats = rows.map(h => h.latitude);
+    const lngs = rows.map(h => h.longitude);
+
+    mapRef.current.fitToCoordinates(
+      rows.map(h => ({ latitude: h.latitude, longitude: h.longitude })),
+      { edgePadding: { top: 80, right: 80, bottom: 280, left: 80 }, animated: true }
+    );
+  }
+}
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const perm = await Location.requestForegroundPermissionsAsync();
+        if (perm.status === "granted") {
+          const loc = await Location.getLastKnownPositionAsync({});
+          if (loc?.coords) {
+            const r = {
+              latitude: loc.coords.latitude,
+              longitude: loc.coords.longitude,
+              latitudeDelta: 0.06,
+              longitudeDelta: 0.06,
+            };
+            setRegion(r);
+          }
+        }
+      } catch {}
+      await reload();
+        mapRef.current?.animateToRegion({ latitude: coord.latitude, longitude: coord.longitude, latitudeDelta: 0.02, longitudeDelta: 0.02 }, 350);
+    })();
+  }, []);
+
+  const visibleHazards = useMemo(
+    () => hazards.filter((h) => (showResolved ? true : !isResolved(h))),
+    [hazards, showResolved]
+  );
+
+  async function confirmPlacement() {
+    if (!mapRef.current || isMutating) return;
+    setIsMutating(true);
+    try {
+      const { width, height } = Dimensions.get("window");
+      const coord = await mapRef.current.coordinateForPoint({
+        x: width / 2,
+        y: height / 2,
+      });
+
+      await createHazard({
+        type,
+        severity,
+        status: "reported",
+        latitude: coord.latitude,
+        longitude: coord.longitude,
+      });
+
+      await reload();
+    } finally {
+      setPlacing(false);
+      setIsMutating(false);
+    }
+  }
+
+  function recenter() {
+  if (!mapRef.current || !region) return;
+  mapRef.current.animateToRegion({
+    latitude: region.latitude,
+    longitude: region.longitude,
+    latitudeDelta: 0.06,
+    longitudeDelta: 0.06,
+  }, 350);
+}
+
+  return (
+    <View style={{ flex: 1 }}>
+      <MapView
+        ref={(r) => (mapRef.current = r)}
+        style={{ flex: 1 }}
+        provider={PROVIDER_GOOGLE}
+        region={region}
+        showsUserLocation
+        showsMyLocationButton={false}
+        onLongPress={() => setPlacing(true)}
+      >
+        {visibleHazards.map((h) => {
+          const sev = normSeverity(h.severity);
+          const meta = SEVERITIES.find((s) => s.key === sev)!;
+          const resolved = isResolved(h);
+
+          return (
+            <Marker
+              key={String(h.id)}
+              coordinate={{ latitude: h.latitude, longitude: h.longitude }}
+              onPress={() => setSelectedId(String(h.id))}
+            >
+              <View
+                style={{
+                  width: meta.size,
+                  height: meta.size,
+                  borderRadius: meta.size / 2,
+                  backgroundColor: resolved ? "transparent" : meta.color,
+                  borderWidth: resolved ? 2 : 0,
+                  borderColor: "#64748b",
+                }}
+              />
+            </Marker>
+          );
+        })}
+
+        {placing && (
+          <Marker coordinate={region}>
+            <View
+              style={{
+                width: 24,
+                height: 24,
+                borderRadius: 12,
+                borderWidth: 3,
+                borderColor: "#2563eb",
+                backgroundColor: "rgba(37,99,235,0.2)",
+              }}
+            />
+          </Marker>
+        )}
+      </MapView>
+{placing && (
+  <View style={{ position: "absolute", top: "50%", left: "50%", marginLeft: -12, marginTop: -12, width: 24, height: 24, borderRadius: 12, borderWidth: 3, borderColor: "#2563eb", backgroundColor: "rgba(37,99,235,0.15)", zIndex: 9999, elevation: 10 }} />
+)}
+
+      {/* Recenter */}
+      <Pressable
+        onPress={recenter}
+        style={{
+          position: "absolute",
+          right: 16,
+          bottom: 110,
+          backgroundColor: "#2563eb",
+          padding: 14,
+          borderRadius: 28,
+        }}
+      >
+        <Text style={{ color: "#fff", fontWeight: "700" }}>◎</Text>
+      </Pressable>
+
+      {/* Confirm placement */}
+      {placing && (
+        <Pressable
+          onPress={confirmPlacement}
+          style={{
+            position: "absolute",
+            bottom: 20,
+            left: 20,
+            right: 20,
+            backgroundColor: "#16a34a",
+            padding: 18,
+            borderRadius: 14,
+            alignItems: "center",
+          }}
+        >
+          <Text style={{ color: "#fff", fontWeight: "800" }}>
+            CONFIRM HAZARD
+          </Text>
+        </Pressable>
+      )}
+    </View>
+  );
+}
+app/lgu/map.base.v3.locked.tsx
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { View, Text, Pressable, Dimensions } from "react-native";
+import MapView, { Marker, Region } from "react-native-maps";
+import * as Location from "expo-location";
+import {
+  fetchHazards,
+  createHazard,
+  resolveHazard,
+  deleteHazard,
+  Hazard,
+} from "@/lib/hazards";
+
+/* ================= LGU OPS – LOCKED ================= */
+
+const DEFAULT_REGION: Region = {
+  latitude: 14.5995,
+  longitude: 120.9842,
+  latitudeDelta: 0.08,
+  longitudeDelta: 0.08,
+};
+
+function severityColor(sev: any) {
+  if (sev === 3 || sev === "HIGH") return "#ef4444";
+  if (sev === 2 || sev === "MEDIUM") return "#f59e0b";
+  return "#10b981";
+}
+
+export default function LGUMap() {
+  const mapRef = useRef<MapView | null>(null);
+
+  const [region, setRegion] = useState<Region>(DEFAULT_REGION);
+  const [userCoord, setUserCoord] =
+    useState<{ latitude: number; longitude: number } | null>(null);
+
+  const [hazards, setHazards] = useState<Hazard[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [placing, setPlacing] = useState(false);
+  const [severity, setSeverity] = useState<1 | 2 | 3>(2);
+  const [type, setType] = useState("pothole");
+  const [isMutating, setIsMutating] = useState(false);
+
+  async function reload() {
+    try {
+      const data = await fetchHazards();
+      setHazards(Array.isArray(data) ? data : []);
+    } catch (e) {
+      console.warn("[LGUMap] fetchHazards failed", e);
+    }
+  }
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status === "granted") {
+          const loc = await Location.getLastKnownPositionAsync({});
+          if (loc?.coords) {
+            const r = {
+              latitude: loc.coords.latitude,
+              longitude: loc.coords.longitude,
+              latitudeDelta: 0.06,
+              longitudeDelta: 0.06,
+            };
+            setRegion(r);
+            setUserCoord({ latitude: r.latitude, longitude: r.longitude });
+          }
+        }
+      } catch {}
+      await reload();
+    })();
+  }, []);
+
+  const selected = useMemo(
+    () => hazards.find(h => String(h.id) === String(selectedId)) ?? null,
+    [hazards, selectedId]
+  );
+
+  async function confirmPlacement() {
+    if (!mapRef.current || isMutating) return;
+    setIsMutating(true);
+
+    try {
+      const { width, height } = Dimensions.get("window");
+      const coord = await mapRef.current.coordinateForPoint({
+        x: width / 2,
+        y: height / 2,
+      });
+
+      await createHazard({
+        latitude: coord.latitude,
+        longitude: coord.longitude,
+        severity,
+        type,
+      });
+
+      await reload();
+    } finally {
+      setPlacing(false);
+      setIsMutating(false);
+    }
+  }
+
+  async function resolveSelected() {
+    if (!selected) return;
+    setIsMutating(true);
+    await resolveHazard(String(selected.id));
+    await reload();
+    setIsMutating(false);
+  }
+
+  async function deleteSelected() {
+    if (!selected) return;
+    setSelectedId(null);
+    setIsMutating(true);
+    await deleteHazard(String(selected.id));
+    await reload();
+    setIsMutating(false);
+  }
+
+  function recenter() {
+    if (!mapRef.current) return;
+
+    if (selected) {
+      const r = {
+        latitude: selected.latitude,
+        longitude: selected.longitude,
+        latitudeDelta: 0.02,
+        longitudeDelta: 0.02,
+      };
+      setRegion(r);
+      mapRef.current.animateToRegion(r, 350);
+      return;
+    }
+
+    if (userCoord) {
+      const r = {
+        latitude: userCoord.latitude,
+        longitude: userCoord.longitude,
+        latitudeDelta: 0.06,
+        longitudeDelta: 0.06,
+      };
+      setRegion(r);
+      mapRef.current.animateToRegion(r, 350);
+    }
+  }
+
+  return (
+    <View style={{ flex: 1 }}>
+      <MapView
+        ref={r => (mapRef.current = r)}
+        style={{ flex: 1 }}
+        region={region}
+        onLongPress={() => !isMutating && setPlacing(true)}
+        showsUserLocation
+      >
+        {hazards.map(h => (
+          <Marker
+            key={String(h.id)}
+            coordinate={{ latitude: h.latitude, longitude: h.longitude }}
+            onPress={() => setSelectedId(String(h.id))}
+          >
+            <View
+              style={{
+                width: 18,
+                height: 18,
+                borderRadius: 9,
+                backgroundColor: severityColor(h.severity),
+                borderWidth: selectedId === String(h.id) ? 3 : 1,
+                borderColor: "#000",
+              }}
+            />
+          </Marker>
+        ))}
+      </MapView>
+
+      <Pressable
+        onPress={recenter}
+        style={{
+          position: "absolute",
+          right: 16,
+          bottom: 120,
+          padding: 14,
+          borderRadius: 24,
+          backgroundColor: "#2563eb",
+        }}
+      >
+        <Text style={{ color: "white", fontWeight: "900" }}>RECENTER</Text>
+      </Pressable>
+
+      {placing && (
+        <View
+          style={{
+            position: "absolute",
+            left: 12,
+            right: 12,
+            bottom: 20,
+            backgroundColor: "#020617",
+            borderRadius: 20,
+            padding: 16,
+          }}
+        >
+          <Text style={{ color: "white", fontWeight: "900" }}>
+            Place pin (center). Confirm to report.
+          </Text>
+
+          <Pressable
+            onPress={confirmPlacement}
+            style={{
+              marginTop: 12,
+              padding: 14,
+              borderRadius: 14,
+              backgroundColor: "#16a34a",
+            }}
+          >
+            <Text style={{ color: "white", fontWeight: "900", textAlign: "center" }}>
+              CONFIRM
+            </Text>
+          </Pressable>
+        </View>
+      )}
+
+      {selected && (
+        <View
+          style={{
+            position: "absolute",
+            left: 12,
+            right: 12,
+            bottom: 20,
+            backgroundColor: "#020617",
+            borderRadius: 20,
+            padding: 16,
+          }}
+        >
+          <Text style={{ color: "white", fontWeight: "900" }}>
+            ACTIVE HAZARD
+          </Text>
+
+          <Pressable
+            onPress={resolveSelected}
+            style={{
+app/lgu/map.tsx
+export { default } from "./map.base.v3_1.locked";
+app/lgu/map.base.tsx
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { View, Text, Pressable, Dimensions, Platform } from "react-native";
+import MapView, { Marker, Region, MapPressEvent } from "react-native-maps";
+import * as Location from "expo-location";
+import {
+  fetchHazards,
+  createHazard,
+  resolveHazard,
+  deleteHazard,
+  Hazard,
+} from "@/lib/hazards";
+
+/* -------------------- LGU OPS CONFIG -------------------- */
+
+const DEFAULT_REGION: Region = {
+  latitude: 14.5995,
+  longitude: 120.9842,
+  latitudeDelta: 0.08,
+  longitudeDelta: 0.08,
+};
+
+const SEVERITIES = [
+  { key: 3, label: "HIGH", bg: "#ef4444" },
+  { key: 2, label: "MED", bg: "#f59e0b" },
+  { key: 1, label: "LOW", bg: "#10b981" },
+] as const;
+
+const HAZARD_TYPES = [
+  { key: "pothole", label: "Pothole" },
+  { key: "flood", label: "Flood" },
+  { key: "crack", label: "Crack" },
+  { key: "debris", label: "Debris" },
+  { key: "construction", label: "Construction" },
+] as const;
+
+type HazardType = (typeof HAZARD_TYPES)[number]["key"];
+
+function severityColor(sev: number) {
+  if (sev === 3) return "#ef4444";
+  if (sev === 2) return "#f59e0b";
+  return "#10b981";
+}
+
+function safeStatus(h: any): "reported" | "resolved" {
+  return h?.status === "resolved" ? "resolved" : "reported";
+}
+
+function shortTypeLabel(t: string) {
+  const found = HAZARD_TYPES.find((x) => x.key === t);
+  return found ? found.label : String(t || "Hazard");
+}
+
+/* -------------------- COMPONENT -------------------- */
+
+export default function LGUMap() {
+  const mapRef = useRef<MapView | null>(null);
+
+  const [region, setRegion] = useState<Region>(DEFAULT_REGION);
+  const [userCoord, setUserCoord] =
+    useState<{ latitude: number; longitude: number } | null>(null);
+
+  const [hazards, setHazards] = useState<Hazard[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [isMutating, setIsMutating] = useState(false);
+
+  // Center-pin placement mode (LOCKED)
+  const [placementMode, setPlacementMode] = useState(false);
+  const [severity, setSeverity] = useState<1 | 2 | 3>(2);
+  const [type, setType] = useState<HazardType>("pothole");
+
+  // LGU filters
+  const [severityFilter, setSeverityFilter] = useState<Record<number, boolean>>({
+    3: true,
+    2: true,
+    1: true,
+  });
+  const [typeFilter, setTypeFilter] = useState<Record<HazardType, boolean>>({
+    pothole: true,
+    flood: true,
+    crack: true,
+    debris: true,
+    construction: true,
+  });
+  const [showResolved, setShowResolved] = useState(true);
+
+  async function safeReloadHazards() {
+    try {
+      const next = await fetchHazards();
+      setHazards(Array.isArray(next) ? next : []);
+    } catch (e) {
+      console.warn("[LGUMap] fetchHazards failed", e);
+      setHazards([]);
+    }
+  }
+
+  // Location bootstrap + initial load
+  useEffect(() => {
+    (async () => {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status === "granted") {
+          const loc = await Location.getLastKnownPositionAsync({});
+          if (loc?.coords) {
+            const r: Region = {
+              latitude: loc.coords.latitude,
+              longitude: loc.coords.longitude,
+              latitudeDelta: 0.06,
+              longitudeDelta: 0.06,
+            };
+            setUserCoord({ latitude: r.latitude, longitude: r.longitude });
+            setRegion(r);
+          }
+        }
+      } catch {
+        // keep default region
+      }
+      await safeReloadHazards();
+    })();
+  }, []);
+
+  const selected = useMemo(() => {
+    if (!selectedId) return null;
+    return hazards.find((h: any) => String(h.id) === String(selectedId)) ?? null;
+  }, [selectedId, hazards]);
+
+  // Clear selection if it disappears
+  useEffect(() => {
+    if (selectedId && !hazards.some((h: any) => String(h.id) === String(selectedId))) {
+      setSelectedId(null);
+    }
+  }, [hazards, selectedId]);
+
+  // LOCKED: single source of truth
+  function enterPlacingMode() {
+    setSelectedId(null);
+    setPlacementMode(true);
+  }
+
+  function cancelPlacement() {
+    setPlacementMode(false);
+  }
+
+  async function confirmPlacement() {
+    if (!mapRef.current || isMutating) return;
+
+    try {
+      setIsMutating(true);
+
+      const { width, height } = Dimensions.get("window");
+      // Best-effort: center of the screen. Good enough for ops.
+      const coord = await mapRef.current.coordinateForPoint({
+        x: width / 2,
+        y: height / 2,
+      });
+
+      await createHazard({
+        latitude: coord.latitude,
+        longitude: coord.longitude,
+        severity,
+        type,
+      });
+
+      await safeReloadHazards();
+    } catch (e) {
+      console.warn("[LGUMap] confirmPlacement failed", e);
+    } finally {
+      setIsMutating(false);
+      setPlacementMode(false);
+    }
+  }
+
+  function onMarkerPress(id: string) {
+    if (isMutating || placementMode) return;
+    setSelectedId(id);
+  }
+
+  async function resolveSelected() {
+    if (!selected || isMutating) return;
+    try {
+      setIsMutating(true);
+      await resolveHazard(String((selected as any).id));
+      await safeReloadHazards();
+    } catch (e) {
+      console.warn("[LGUMap] resolveSelected failed", e);
+    } finally {
+      setIsMutating(false);
+    }
+  }
+
+  async function deleteSelected() {
+    if (!selected || isMutating) return;
+
+    const id = String((selected as any).id);
+    setSelectedId(null);
+
+    try {
+      setIsMutating(true);
+      await deleteHazard(id);
+      await safeReloadHazards();
+    } catch (e) {
+      console.warn("[LGUMap] deleteSelected failed", e);
+      await safeReloadHazards();
+    } finally {
+      setIsMutating(false);
+    }
+  }
+
+  function recenter() {
+    if (!mapRef.current || !userCoord) return;
+
+    const r: Region = {
+      latitude: userCoord.latitude,
+      longitude: userCoord.longitude,
+      latitudeDelta: 0.06,
+      longitudeDelta: 0.06,
+    };
+
+    setRegion(r);
+    mapRef.current.animateToRegion(r, 350);
+  }
+
+  const hazardsStable = useMemo(() => {
+    const arr = [...hazards] as any[];
+    arr.sort((a, b) => String(a.id).localeCompare(String(b.id)));
+    return arr;
+  }, [hazards]);
+
+  const visibleHazards = useMemo(() => {
+    return hazardsStable.filter((h: any) => {
+      const st = safeStatus(h);
+      if (!showResolved && st === "resolved") return false;
+      if (!severityFilter[h.severity]) return false;
+      if (!typeFilter[h.type as HazardType]) return false;
+      return true;
+    });
+  }, [hazardsStable, severityFilter, typeFilter, showResolved]);
+
+  const counts = useMemo(() => {
+    let high = 0, med = 0, low = 0;
+    let active = 0, resolved = 0;
+app/lgu/map.ios.tsx
+export { default } from "./map.base.v3_1.locked";
+app/lgu/map.web.tsx
+import { useEffect, useState } from "react";
+import Map, { Marker } from "react-map-gl";
+import "mapbox-gl/dist/mapbox-gl.css";
+import { View } from "react-native";
+import { supabase } from "../../lib/supabase";
+
+type Hazard = {
+  id: string;
+  latitude: number;
+  longitude: number;
+  severity: "LOW" | "MEDIUM" | "HIGH";
+};
+
+export default function LGUWebMap() {
+  const [hazards, setHazards] = useState<Hazard[]>([]);
+
+  useEffect(() => {
+    const load = async () => {
+      const { data, error } = await supabase
+        .from("hazards")
+        .select("id, latitude, longitude, severity");
+
+      if (!error && data) {
+        setHazards(data as Hazard[]);
+      }
+    };
+
+    load();
+  }, []);
+
+  return (
+    <View style={{ flex: 1 }}>
+      <Map
+        mapboxAccessToken={process.env.NEXT_PUBLIC_MAPBOX_TOKEN}
+        initialViewState={{
+          latitude: 14.5995,
+          longitude: 120.9842,
+          zoom: 11,
+        }}
+        style={{ width: "100%", height: "100%" }}
+        mapStyle="mapbox://styles/mapbox/streets-v12"
+      >
+        {hazards.map((h) => (
+          <Marker key={h.id} latitude={h.latitude} longitude={h.longitude}>
+            <div
+              style={{
+                width: 10,
+                height: 10,
+                borderRadius: "50%",
+                background:
+                  h.severity === "HIGH"
+                    ? "red"
+                    : h.severity === "MEDIUM"
+                    ? "orange"
+                    : "yellow",
+              }}
+            />
+          </Marker>
+        ))}
+      </Map>
+
+      <div
+        style={{
+          position: "absolute",
+          bottom: 16,
+          left: 16,
+          background: "white",
+          padding: 8,
+          borderRadius: 6,
+          fontSize: 12,
+        }}
+      >
+        LGU Hazard Visibility (Read-Only)
+      </div>
+    </View>
+  );
+}
+app/lgu/map.base.v1.backup.tsx
+import { View, Text, TouchableOpacity, Modal, Pressable } from "react-native";
+import MapView, { Marker, MapPressEvent, Region } from "react-native-maps";
+import * as Location from "expo-location";
+import { useEffect, useState } from "react";
+import { addHazard, loadHazards, Hazard } from "@/lib/hazards";
+
+/* -------------------- CONFIG -------------------- */
+
+const DEFAULT_REGION: Region = {
+  latitude: 14.676,
+  longitude: 121.0437,
+  latitudeDelta: 0.08,
+  longitudeDelta: 0.08,
+};
+
+const SEVERITIES = [
+  { key: 3, label: "HIGH", color: "#ef4444" },
+  { key: 2, label: "MED", color: "#f59e0b" },
+  { key: 1, label: "LOW", color: "#10b981" },
+] as const;
+
+const HAZARD_TYPES = [
+  { key: "pothole", label: "Pothole" },
+  { key: "flood", label: "Flood" },
+  { key: "crack", label: "Crack" },
+  { key: "debris", label: "Debris" },
+  { key: "construction", label: "Construction" },
+] as const;
+
+type HazardType = typeof HAZARD_TYPES[number]["key"];
+
+function hazardColor(severity: number) {
+  if (severity === 3) return "#ef4444";
+  if (severity === 2) return "#f59e0b";
+  return "#10b981";
+}
+
+/* -------------------- COMPONENT -------------------- */
+
+export default function LGUMap() {
+  const [region, setRegion] = useState<Region>(DEFAULT_REGION);
+  const [hazards, setHazards] = useState<Hazard[]>([]);
+  const [pending, setPending] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [modalVisible, setModalVisible] = useState(false);
+
+  const [severityFilter, setSeverityFilter] = useState<Record<number, boolean>>({
+    3: true,
+    2: true,
+    1: true,
+  });
+
+  const [typeFilter, setTypeFilter] = useState<Record<HazardType, boolean>>({
+    pothole: true,
+    flood: true,
+    crack: true,
+    debris: true,
+    construction: true,
+  });
+
+  /* ---------- LOCATION ---------- */
+  useEffect(() => {
+    (async () => {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status === "granted") {
+          const loc = await Location.getLastKnownPositionAsync({});
+          if (loc?.coords) {
+            setRegion({
+              latitude: loc.coords.latitude,
+              longitude: loc.coords.longitude,
+              latitudeDelta: 0.08,
+              longitudeDelta: 0.08,
+            });
+          }
+        }
+      } catch {}
+      const existing = await loadHazards();
+      setHazards(Array.isArray(existing) ? existing : []);
+    })();
+  }, []);
+
+  /* ---------- EVENTS ---------- */
+  function onLongPress(e: MapPressEvent) {
+    setPending(e.nativeEvent.coordinate);
+    setModalVisible(true);
+  }
+
+  async function submitHazard() {
+    if (!pending) return;
+    const h: Hazard = {
+      id: `hz_${Date.now()}`,
+      latitude: pending.latitude,
+      longitude: pending.longitude,
+      type: "pothole",
+      severity: 3,
+      createdAt: Date.now(),
+    };
+    await addHazard(h);
+    setHazards((p) => [...p, h]);
+    setModalVisible(false);
+    setPending(null);
+  }
+
+  /* ---------- FILTERED ---------- */
+  const visibleHazards = hazards.filter(
+    (h) => severityFilter[h.severity] && typeFilter[h.type as HazardType]
+  );
+
+  /* ---------- RENDER ---------- */
+  return (
+    <View style={{ flex: 1 }}>
+      <MapView
+        style={{ flex: 1 }}
+        initialRegion={region}
+        onLongPress={onLongPress}
+      >
+        {visibleHazards.map((h) => (
+          <Marker
+            key={h.id}
+            coordinate={{ latitude: h.latitude, longitude: h.longitude }}
+            pinColor={hazardColor(h.severity)}
+          />
+        ))}
+      </MapView>
+
+      {/* ---------- BOTTOM ACTION STRIP ---------- */}
+      <View
+        style={{
+          position: "absolute",
+          bottom: 60,
+          left: 0,
+          right: 0,
+          backgroundColor: "rgba(15,15,15,0.95)",
+          padding: 14,
+          gap: 10,
+        }}
+      >
+        {/* Severity */}
+        <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+          {SEVERITIES.map((s) => (
+            <Pressable
+              key={s.key}
+              onPress={() =>
+                setSeverityFilter((p) => ({ ...p, [s.key]: !p[s.key] }))
+              }
+              style={{
+                flex: 1,
+                marginHorizontal: 4,
+                padding: 10,
+                borderRadius: 8,
+                backgroundColor: severityFilter[s.key] ? s.color : "#222",
+              }}
+            >
+              <Text style={{ color: "white", textAlign: "center", fontWeight: "bold" }}>
+                {s.label}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+
+        {/* Hazard Types */}
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+          {HAZARD_TYPES.map((t) => (
+            <Pressable
+              key={t.key}
+              onPress={() =>
+                setTypeFilter((p) => ({ ...p, [t.key]: !p[t.key] }))
+              }
+              style={{
+                paddingVertical: 6,
+                paddingHorizontal: 10,
+                borderRadius: 20,
+                backgroundColor: typeFilter[t.key] ? "#2563eb" : "#222",
+              }}
+            >
+              <Text style={{ color: "white", fontSize: 12 }}>{t.label}</Text>
+            </Pressable>
+          ))}
+        </View>
+
+        {/* Report */}
+        <TouchableOpacity
+          onPress={() => setModalVisible(true)}
+          style={{
+            marginTop: 6,
+            backgroundColor: "#2563eb",
+            padding: 14,
+            borderRadius: 30,
+            alignItems: "center",
+          }}
+        >
+          <Text style={{ color: "white", fontWeight: "bold", fontSize: 16 }}>
+            + REPORT HAZARD
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Confirm Modal */}
+      <Modal transparent visible={modalVisible} animationType="fade">
+        <Pressable
+          onPress={() => setModalVisible(false)}
+          style={{
+            flex: 1,
+            backgroundColor: "rgba(0,0,0,0.6)",
+            justifyContent: "center",
+            alignItems: "center",
+          }}
+        >
+          <Pressable
+            onPress={submitHazard}
+            style={{
+              backgroundColor: "#111",
+              padding: 20,
+              borderRadius: 12,
+            }}
+          >
+            <Text style={{ color: "white" }}>Confirm Hazard</Text>
+          </Pressable>
+        </Pressable>
+      </Modal>
+    </View>
+  );
+}
+app/lgu/map.android.tsx
+export { default } from "./map.base.v3_1.locked";
+app/lgu/map.base.step2.preplacing.backup.tsx
+import { View, Text, TouchableOpacity, Modal, Pressable } from "react-native";
+import MapView, { Marker, MapPressEvent, Region } from "react-native-maps";
+import * as Location from "expo-location";
+import { useEffect, useState } from "react";
+import { addHazard, loadHazards, Hazard } from "@/lib/hazards";
+
+/* -------------------- CONFIG -------------------- */
+
+const DEFAULT_REGION: Region = {
+  latitude: 14.676,
+  longitude: 121.0437,
+  latitudeDelta: 0.08,
+  longitudeDelta: 0.08,
+};
+
+const SEVERITIES = [
+  { key: 3, label: "HIGH", color: "#ef4444" },
+  { key: 2, label: "MED", color: "#f59e0b" },
+  { key: 1, label: "LOW", color: "#10b981" },
+] as const;
+
+const HAZARD_TYPES = [
+  { key: "pothole", label: "Pothole" },
+  { key: "flood", label: "Flood" },
+  { key: "crack", label: "Crack" },
+  { key: "debris", label: "Debris" },
+  { key: "construction", label: "Construction" },
+] as const;
+
+type HazardType = typeof HAZARD_TYPES[number]["key"];
+
+function hazardColor(severity: number) {
+  if (severity === 3) return "#ef4444";
+  if (severity === 2) return "#f59e0b";
+  return "#10b981";
+}
+
+/* -------------------- COMPONENT -------------------- */
+
+export default function LGUMap() {
+  const [region, setRegion] = useState<Region>(DEFAULT_REGION);
+  const [hazards, setHazards] = useState<Hazard[]>([]);
+  const [pending, setPending] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [modalVisible, setModalVisible] = useState(false);
+
+  const [severityFilter, setSeverityFilter] = useState<Record<number, boolean>>({
+    3: true,
+    2: true,
+    1: true,
+  });
+
+  const [typeFilter, setTypeFilter] = useState<Record<HazardType, boolean>>({
+    pothole: true,
+    flood: true,
+    crack: true,
+    debris: true,
+    construction: true,
+  });
+
+  /* ---------- LOCATION ---------- */
+  useEffect(() => {
+    (async () => {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status === "granted") {
+          const loc = await Location.getLastKnownPositionAsync({});
+          if (loc?.coords) {
+            setRegion({
+              latitude: loc.coords.latitude,
+              longitude: loc.coords.longitude,
+              latitudeDelta: 0.08,
+              longitudeDelta: 0.08,
+            });
+          }
+        }
+      } catch {}
+      const existing = await loadHazards();
+      setHazards(Array.isArray(existing) ? existing : []);
+    })();
+  }, []);
+
+  /* ---------- EVENTS ---------- */
+  function onLongPress(e: MapPressEvent) {
+    setPending(e.nativeEvent.coordinate);
+    setModalVisible(true);
+  }
+
+  async function submitHazard() {
+    if (!pending) return;
+    const h: Hazard = {
+      id: `hz_${Date.now()}`,
+      latitude: pending.latitude,
+      longitude: pending.longitude,
+      type: "pothole",
+      severity: 3,
+      createdAt: Date.now(),
+    };
+    await addHazard(h);
+    setHazards((p) => [...p, h]);
+    setModalVisible(false);
+    setPending(null);
+  }
+
+  /* ---------- FILTERED ---------- */
+  const visibleHazards = hazards.filter(
+    (h) => severityFilter[h.severity] && typeFilter[h.type as HazardType]
+  );
+
+  /* ---------- RENDER ---------- */
+  return (
+    <View style={{ flex: 1 }}>
+      <MapView
+        style={{ flex: 1 }}
+        initialRegion={region}
+        onLongPress={onLongPress}
+      >
+        {visibleHazards.map((h) => (
+          <Marker
+            key={h.id}
+            coordinate={{ latitude: h.latitude, longitude: h.longitude }}
+            pinColor={hazardColor(h.severity)}
+          />
+        ))}
+      </MapView>
+
+      {/* ---------- BOTTOM ACTION STRIP ---------- */}
+      <View
+        style={{
+          position: "absolute",
+          bottom: 60,
+          left: 0,
+          right: 0,
+          backgroundColor: "rgba(15,15,15,0.95)",
+          padding: 14,
+          gap: 10,
+        }}
+      >
+        {/* Severity */}
+        <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+          {SEVERITIES.map((s) => (
+            <Pressable
+              key={s.key}
+              onPress={() =>
+                setSeverityFilter((p) => ({ ...p, [s.key]: !p[s.key] }))
+              }
+              style={{
+                flex: 1,
+                marginHorizontal: 4,
+                padding: 10,
+                borderRadius: 8,
+                backgroundColor: severityFilter[s.key] ? s.color : "#222",
+              }}
+            >
+              <Text style={{ color: "white", textAlign: "center", fontWeight: "bold" }}>
+                {s.label}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+
+        {/* Hazard Types */}
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+          {HAZARD_TYPES.map((t) => (
+            <Pressable
+              key={t.key}
+              onPress={() =>
+                setTypeFilter((p) => ({ ...p, [t.key]: !p[t.key] }))
+              }
+              style={{
+                paddingVertical: 6,
+                paddingHorizontal: 10,
+                borderRadius: 20,
+                backgroundColor: typeFilter[t.key] ? "#2563eb" : "#222",
+              }}
+            >
+              <Text style={{ color: "white", fontSize: 12 }}>{t.label}</Text>
+            </Pressable>
+          ))}
+        </View>
+
+        {/* Report */}
+        <TouchableOpacity
+          onPress={() => setModalVisible(true)}
+          style={{
+            marginTop: 6,
+            backgroundColor: "#2563eb",
+            padding: 14,
+            borderRadius: 30,
+            alignItems: "center",
+          }}
+        >
+          <Text style={{ color: "white", fontWeight: "bold", fontSize: 16 }}>
+            + REPORT HAZARD
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Confirm Modal */}
+      <Modal transparent visible={modalVisible} animationType="fade">
+        <Pressable
+          onPress={() => setModalVisible(false)}
+          style={{
+            flex: 1,
+            backgroundColor: "rgba(0,0,0,0.6)",
+            justifyContent: "center",
+            alignItems: "center",
+          }}
+        >
+          <Pressable
+            onPress={submitHazard}
+            style={{
+              backgroundColor: "#111",
+              padding: 20,
+              borderRadius: 12,
+            }}
+          >
+            <Text style={{ color: "white" }}>Confirm Hazard</Text>
+          </Pressable>
+        </Pressable>
+      </Modal>
+    </View>
+  );
+}
+app/lgu/map.base.v2.locked.tsx
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { View, Text, Pressable, Dimensions } from "react-native";
+import MapView, { Marker, Region } from "react-native-maps";
+import * as Location from "expo-location";
+import {
+  fetchHazards,
+  createHazard,
+  resolveHazard,
+  deleteHazard,
+  Hazard,
+} from "@/lib/hazards";
+
+/* ================= LGU OPS — STABLE v2 (FIXED) ================= */
+
+const DEFAULT_REGION: Region = {
+  latitude: 14.5995,
+  longitude: 120.9842,
+  latitudeDelta: 0.08,
+  longitudeDelta: 0.08,
+};
+
+const SEVERITIES = [
+  { key: 3, label: "HIGH", color: "#ef4444" },
+  { key: 2, label: "MEDIUM", color: "#f59e0b" },
+  { key: 1, label: "LOW", color: "#10b981" },
+] as const;
+
+const HAZARD_TYPES = [
+  { key: "pothole", label: "Pothole" },
+  { key: "flood", label: "Flood" },
+  { key: "crack", label: "Crack" },
+  { key: "debris", label: "Debris" },
+  { key: "construction", label: "Construction" },
+] as const;
+
+type HazardType = (typeof HAZARD_TYPES)[number]["key"];
+
+function severityMeta(sev: number) {
+  return SEVERITIES.find((s) => s.key === sev) ?? SEVERITIES[1];
+}
+
+function safeStatus(h: any): "reported" | "resolved" {
+  return h?.status === "resolved" ? "resolved" : "reported";
+}
+
+/* ================= COMPONENT ================= */
+
+export default function LGUMap() {
+  const mapRef = useRef<MapView | null>(null);
+
+  const [region, setRegion] = useState(DEFAULT_REGION);
+  const [hazards, setHazards] = useState<Hazard[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [isMutating, setIsMutating] = useState(false);
+
+  const [placing, setPlacing] = useState(false);
+  const [severity, setSeverity] = useState<1 | 2 | 3>(2);
+  const [type, setType] = useState<HazardType>("pothole");
+
+  const selected = useMemo(
+    () => hazards.find((h) => String(h.id) === selectedId) ?? null,
+    [hazards, selectedId]
+  );
+
+  async function reload() {
+    const next = await fetchHazards();
+    setHazards(Array.isArray(next) ? next : []);
+  }
+
+  useEffect(() => {
+    (async () => {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status === "granted") {
+        const loc = await Location.getLastKnownPositionAsync({});
+        if (loc?.coords) {
+          setRegion({
+            latitude: loc.coords.latitude,
+            longitude: loc.coords.longitude,
+            latitudeDelta: 0.06,
+            longitudeDelta: 0.06,
+          });
+        }
+      }
+      await reload();
+    })();
+  }, []);
+
+  async function confirmPlacement() {
+    if (!mapRef.current || isMutating) return;
+    setIsMutating(true);
+
+    try {
+      const { width, height } = Dimensions.get("window");
+      const coord = await mapRef.current.coordinateForPoint({
+        x: width / 2,
+        y: height / 2,
+      });
+
+      await createHazard({
+        type,
+        severity,
+        status: "reported",
+        latitude: coord.latitude,
+        longitude: coord.longitude,
+      });
+
+      await reload();
+    } finally {
+      setPlacing(false);
+      setIsMutating(false);
+    }
+  }
+
+  async function resolveSelected() {
+    if (!selected) return;
+    await resolveHazard(selected.id);
+    await reload();
+  }
+
+  async function removeSelected() {
+    if (!selected) return;
+    await deleteHazard(selected.id);
+    setSelectedId(null);
+    await reload();
+  }
+
+  return (
+    <View style={{ flex: 1 }}>
+      <MapView
+        ref={(r) => (mapRef.current = r)}
+        style={{ flex: 1 }}
+        initialRegion={region}
+        onLongPress={() => !isMutating && setPlacing(true)}
+        showsUserLocation
+      >
+        {hazards.map((h) => (
+          <Marker
+            key={h.id}
+            coordinate={{ latitude: h.latitude, longitude: h.longitude }}
+            onPress={() => setSelectedId(String(h.id))}
+          >
+            <View
+              style={{
+                width: 22,
+                height: 22,
+                borderRadius: 11,
+                backgroundColor: severityMeta(h.severity).color,
+                opacity: safeStatus(h) === "resolved" ? 0.4 : 1,
+              }}
+            />
+          </Marker>
+        ))}
+      </MapView>
+
+      <View style={{ position: "absolute", top: 12, left: 12, right: 12 }}>
+        <Text style={{ color: "white", fontWeight: "900" }}>
+          LGU HAZARD OPS
+        </Text>
+      </View>
+
+      {placing && (
+        <Pressable
+          onPress={confirmPlacement}
+          style={{
+            position: "absolute",
+            bottom: 24,
+            left: 24,
+            right: 24,
+            backgroundColor: "#2563eb",
+            padding: 16,
+            borderRadius: 16,
+          }}
+        >
+          <Text style={{ color: "white", fontWeight: "900", textAlign: "center" }}>
+            CONFIRM HAZARD
+          </Text>
+        </Pressable>
+      )}
+
+      {selected && (
+        <View style={{ position: "absolute", bottom: 90, left: 12, right: 12 }}>
+          <Pressable onPress={resolveSelected}>
+            <Text style={{ color: "white" }}>RESOLVE</Text>
+          </Pressable>
+          <Pressable onPress={removeSelected}>
+            <Text style={{ color: "red" }}>DELETE</Text>
+          </Pressable>
+        </View>
+      )}
+    </View>
+  );
+}

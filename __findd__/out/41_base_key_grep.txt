@@ -1,0 +1,18 @@
+41:  const [placing, setPlacing] = useState(false);
+81:        mapRef.current?.animateToRegion({ latitude: coord.latitude, longitude: coord.longitude, latitudeDelta: 0.02, longitudeDelta: 0.02 }, 350);
+85:  const visibleHazards = useMemo(
+90:  async function confirmPlacement() {
+95:      const coord = await mapRef.current.coordinateForPoint({
+110:      setPlacing(false);
+115:  function recenter() {
+117:  mapRef.current.animateToRegion({
+134:        onLongPress={() => setPlacing(true)}
+136:        {visibleHazards.map((h) => {
+142:            <Marker
+145:              onPress={() => setSelectedId(String(h.id))}
+161:        {placing && (
+162:          <Marker coordinate={region}>
+176:{placing && (
+182:        onPress={recenter}
+196:      {placing && (
+198:          onPress={confirmPlacement}

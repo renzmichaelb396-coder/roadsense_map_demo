@@ -5,6 +5,24 @@ export default function TabsLayout() {
   return (
     <Tabs screenOptions={{ headerShown: false }}>
       <Tabs.Screen
+        name="index"
+        options={{
+          title: "Home",
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="home" size={size ?? 22} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="map"
+        options={{
+          title: "Map",
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="map" size={size ?? 22} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="insights"
         options={{
           title: "Insights",
@@ -14,11 +32,11 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
-        name="analytics"
+        name="two"
         options={{
-          title: "Analytics",
+          title: "More",
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="stats-chart" size={size ?? 22} color={color} />
+            <Ionicons name="menu" size={size ?? 22} color={color} />
           ),
         }}
       />

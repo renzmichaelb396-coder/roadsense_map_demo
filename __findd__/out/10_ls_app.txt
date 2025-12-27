@@ -1,0 +1,15 @@
+total 72
+-rw-r--r--@  1 renzmichaelb.bautista  staff  2094 Dec 21 11:13 _landing.tsx
+-rw-r--r--@  1 renzmichaelb.bautista  staff   138 Dec 26 22:48 _layout.tsx
+-rw-r--r--@  1 renzmichaelb.bautista  staff  1598 Dec 15 14:18 _layout.tsx.BACKUP_BEFORE_SUPABASE_SYNC
+drwxr-xr-x  14 renzmichaelb.bautista  staff   448 Dec 22 09:39 .
+drwxr-xr-x  39 renzmichaelb.bautista  staff  1248 Dec 26 23:34 ..
+drwxr-xr-x  14 renzmichaelb.bautista  staff   448 Dec 26 16:37 (tabs)
+-rw-r--r--@  1 renzmichaelb.bautista  staff   330 Dec 21 03:03 +html.tsx
+-rw-r--r--   1 renzmichaelb.bautista  staff   836 Oct 26  1985 +not-found.tsx
+drwxr-xr-x@  4 renzmichaelb.bautista  staff   128 Dec 21 03:09 demo
+-rw-r--r--@  1 renzmichaelb.bautista  staff   193 Dec 20 11:17 globals.css
+-rw-r--r--@  1 renzmichaelb.bautista  staff   253 Dec 22 09:39 index.tsx
+drwxr-xr-x@ 21 renzmichaelb.bautista  staff   672 Dec 26 23:30 lgu
+-rw-r--r--@  1 renzmichaelb.bautista  staff   228 Dec 21 03:32 lgu-map.tsx
+-rw-r--r--@  1 renzmichaelb.bautista  staff    59 Dec 21 01:14 modal.tsx

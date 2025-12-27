@@ -1,0 +1,27 @@
+6:  severity: 1 | 2 | 3;
+7:  status: "reported" | "resolved";
+8:  latitude: number;
+9:  longitude: number;
+10:  created_at?: string | null;
+18:function severityToNumber(sev: any): 1 | 2 | 3 {
+26:    .from("hazards_lgu_view")
+27:    .select("id,type,severity,status,latitude,longitude,created_at")
+28:    .order("created_at", { ascending: false });
+36:    const lat = toNumber(r.latitude);
+37:    const lng = toNumber(r.longitude);
+43:      severity: severityToNumber(r.severity),
+44:      status: r.status === "resolved" ? "resolved" : "reported",
+45:      latitude: lat,
+46:      longitude: lng,
+47:      created_at: r.created_at ?? null,
+56:  severity: 1 | 2 | 3 | "HIGH" | "MEDIUM" | "LOW";
+57:  status?: "reported" | "resolved";
+58:  latitude: number;
+59:  longitude: number;
+61:  const severity =
+62:    input.severity === 3 || input.severity === "HIGH"
+64:      : input.severity === 2 || input.severity === "MEDIUM"
+68:  const locationWkt = `SRID=4326;POINT(${input.longitude} ${input.latitude})`;
+72:    severity,
+73:    status: input.status ?? "reported",
+83:    .update({ status: "resolved" })
