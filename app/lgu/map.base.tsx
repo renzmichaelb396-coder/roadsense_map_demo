@@ -50,25 +50,6 @@ function shortTypeLabel(t: string) {
   return found ? found.label : String(t || "Hazard");
 }
 
-// ---------------- LGU MARKER VISUAL SYSTEM (LOCKED) ----------------
-function typeGlyph(type) {
-  switch (type) {
-    case "pothole": return "PH";
-    case "flood": return "FL";
-    case "crack": return "CR";
-    case "debris": return "DB";
-    case "construction": return "CN";
-    default: return "HZ";
-  }
-}
-
-function getMarkerStyle(sev, status) {
-  const r = status === "resolved";
-  if (sev === 3) return { size: r ? 26 : 34, radius: 6, border: 4, opacity: r ? 0.35 : 1, elevation: r ? 1 : 9 };
-  if (sev === 2) return { size: r ? 22 : 28, radius: 8, border: 3, opacity: r ? 0.40 : 1, elevation: r ? 1 : 7 };
-  return { size: r ? 18 : 22, radius: 999, border: 3, opacity: r ? 0.45 : 1, elevation: r ? 1 : 5 };
-}
-
 /* -------------------- COMPONENT -------------------- */
 
 export default function LGUMap() {
@@ -692,72 +673,14 @@ export default function LGUMap() {
             <Marker
               key={markerKey}
               coordinate={{ latitude: h.latitude, longitude: h.longitude }}
+              pinColor={pinColor}
+              opacity={opacity}
               tracksViewChanges={false}
               onPress={() => onMarkerPress(String(h.id))}
-            >
-              {(() => {
-                const m = getMarkerStyle(h.severity, st);
-                return (
-                  <View
-                    collapsable={false}
-                    renderToHardwareTextureAndroid={true}
-                    style={{
-                      width: m.size,
-                      height: m.size,
-                      borderRadius: m.radius,
-                      backgroundColor: st === "resolved" ? "#64748b" : severityColor(h.severity),
-                      borderWidth: m.border,
-                      borderColor: "white",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      opacity: m.opacity,
-                      elevation: m.elevation,
-                    }}
-                  >
-                    <Text style={{ color: "white", fontWeight: "900", fontSize: 11 }}>
-                      {typeGlyph(h.type)}
-                    </Text>
-                  </View>
-                );
-              })()}
-            </Marker>
+            />
           );
         })}
       </MapView>
-
-      
-      {/* ---------------- LGU MINI LEGEND (LOCKED) ---------------- */}
-      <View
-        pointerEvents="none"
-        style={{
-          position: "absolute",
-          top: 56,
-          right: 12,
-          backgroundColor: "rgba(2,6,23,0.85)",
-          borderRadius: 12,
-          paddingVertical: 6,
-          paddingHorizontal: 10,
-          flexDirection: "row",
-          gap: 8,
-          borderWidth: 1,
-          borderColor: "rgba(255,255,255,0.12)",
-        }}
-      >
-        {["PH","FL","CR","DB","CN"].map((k) => (
-          <Text
-            key={k}
-            style={{
-              color: "white",
-              fontWeight: "900",
-              fontSize: 11,
-              letterSpacing: 0.5,
-            }}
-          >
-            {k}
-          </Text>
-        ))}
-      </View>
-
 
       {topBar}
       {recenterBtn}
