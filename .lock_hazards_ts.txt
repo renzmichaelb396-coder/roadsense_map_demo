@@ -1,0 +1,112 @@
+     1	import { supabase } from "./supabase";
+     2	import { v4 as uuidv4 } from "uuid";
+     3	
+     4	export type HazardStatus = "reported" | "resolved";
+     5	
+     6	export type Hazard = {
+     7	  id: string;
+     8	  latitude: number;
+     9	  longitude: number;
+    10	  type: string;
+    11	  severity: 1 | 2 | 3; // UI uses 1|2|3
+    12	  status: HazardStatus;
+    13	  created_at?: string | null;
+    14	};
+    15	
+    16	type DbSeverity = "LOW" | "MEDIUM" | "HIGH";
+    17	
+    18	function requireSupabase() {
+    19	  return supabase;
+    20	}
+    21	
+    22	function toDbSeverity(sev: number): DbSeverity {
+    23	  if (sev === 3) return "HIGH";
+    24	  if (sev === 2) return "MEDIUM";
+    25	  return "LOW";
+    26	}
+    27	
+    28	function fromDbSeverity(sev: any): 1 | 2 | 3 {
+    29	  if (sev === "HIGH") return 3;
+    30	  if (sev === "MEDIUM") return 2;
+    31	  return 1; // LOW (or fallback)
+    32	}
+    33	
+    34	export async function fetchHazards(): Promise<Hazard[]> {
+    35	  const sb = requireSupabase();
+    36	  if (!sb) return [];
+    37	
+    38	  const { data, error } = await sb
+    39	    .from("hazards")
+    40	    .select("*")
+    41	    .order("created_at", { ascending: false });
+    42	
+    43	  if (error) throw error;
+    44	
+    45	  const rows = (data ?? []) as any[];
+    46	  return rows.map((h) => ({
+    47	    id: String(h.id),
+    48	    latitude: Number(h.latitude),
+    49	    longitude: Number(h.longitude),
+    50	    type: String(h.type ?? "pothole"),
+    51	    severity: fromDbSeverity(h.severity),
+    52	    status: (h?.status === "resolved" ? "resolved" : "reported") as HazardStatus,
+    53	    created_at: h.created_at ?? null,
+    54	  }));
+    55	}
+    56	
+    57	export async function createHazard(input: {
+    58	  latitude: number;
+    59	  longitude: number;
+    60	  type: string;
+    61	  severity: 1 | 2 | 3;
+    62	}): Promise<Hazard> {
+    63	  const sb = requireSupabase();
+    64	
+    65	  const hazard: Hazard = {
+    66	    id: uuidv4(),
+    67	    latitude: input.latitude,
+    68	    longitude: input.longitude,
+    69	    type: input.type,
+    70	    severity: input.severity,
+    71	    status: "reported",
+    72	  };
+    73	
+    74	  const payload = {
+    75	    id: hazard.id,
+    76	    latitude: hazard.latitude,
+    77	    longitude: hazard.longitude,
+    78	    type: hazard.type,
+    79	    severity: toDbSeverity(hazard.severity), // ✅ DB expects LOW|MEDIUM|HIGH
+    80	    status: hazard.status,
+    81	    source: "mobile",
+    82	  };
+    83	
+    84	  console.log("[FINDD] inserting hazard", payload);
+    85	
+    86	  if (!sb) return hazard;
+    87	
+    88	  const { error } = await sb.from("hazards").insert(payload);
+    89	
+    90	  if (error) {
+    91	    console.warn("[FINDD] insert failed", error);
+    92	    throw error;
+    93	  }
+    94	
+    95	  return hazard;
+    96	}
+    97	
+    98	export async function resolveHazard(id: string) {
+    99	  const sb = requireSupabase();
+   100	  if (!sb) return;
+   101	
+   102	  const { error } = await sb.from("hazards").update({ status: "resolved" }).eq("id", id);
+   103	  if (error) throw error;
+   104	}
+   105	
+   106	export async function deleteHazard(id: string) {
+   107	  const sb = requireSupabase();
+   108	  if (!sb) return;
+   109	
+   110	  const { error } = await sb.from("hazards").delete().eq("id", id);
+   111	  if (error) throw error;
+   112	}

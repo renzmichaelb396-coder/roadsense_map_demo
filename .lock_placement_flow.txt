@@ -1,0 +1,8 @@
+7:  createHazard,
+141:  function enterPlacingMode() {
+150:  async function confirmPlacement() {
+160:      await createHazard({
+169:      console.warn("[LGUMap] confirmPlacement failed", e);
+338:        onPress={enterPlacingMode}
+538:            onPress={confirmPlacement}
+663:          if (!isMutating) enterPlacingMode();

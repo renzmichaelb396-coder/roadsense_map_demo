@@ -1,0 +1,12 @@
+25:  { key: 1, label: "LOW", bg: "#10b981" },
+86:  async function safeReloadHazards() {
+91:  const normalized = arr.map((h:any) => ({
+93:    severity: (h?.severity === "HIGH" ? 3 : h?.severity === "MEDIUM" ? 2 : h?.severity === "LOW" ? 1 : h?.severity),
+95:  setHazards(normalized as any);
+124:      await safeReloadHazards();
+167:      await safeReloadHazards();
+186:      await safeReloadHazards();
+203:      await safeReloadHazards();
+206:      await safeReloadHazards();
+304:          <Text style={{ color: "white", fontWeight: "900", fontSize: 12 }}>LOW</Text>
+315:          onPress={safeReloadHazards}

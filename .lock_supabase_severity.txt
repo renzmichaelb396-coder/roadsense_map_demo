@@ -1,0 +1,2 @@
+Distinct severity values (sampled up to 2000):
+{ MEDIUM: 48, LOW: 2, HIGH: 7 }
