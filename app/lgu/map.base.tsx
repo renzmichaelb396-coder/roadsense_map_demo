@@ -651,6 +651,7 @@ export default function LGUMap() {
   return (
     <View style={{ flex: 1 }}>
       <MapView
+            ref={mapRef}
         ref={(r) => (mapRef.current = r)}
         style={{ flex: 1 }}
         initialRegion={region}
