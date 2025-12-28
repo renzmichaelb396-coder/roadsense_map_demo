@@ -65,6 +65,7 @@ export default function LGUMap() {
 
   // Center-pin placement mode (LOCKED)
   const [placementMode, setPlacementMode] = useState(false);
+  const [legendOpen, setLegendOpen] = useState(false);
   const [severity, setSeverity] = useState<1 | 2 | 3>(2);
   const [type, setType] = useState<HazardType>("pothole");
 
@@ -647,6 +648,66 @@ export default function LGUMap() {
       </View>
     </View>
   ) : null;
+
+  const legendOverlay = (
+    <View
+      pointerEvents="box-none"
+      style={{
+        position: "absolute",
+        bottom: 110,
+        left: 12,
+        zIndex: 20,
+      }}
+    >
+      {!legendOpen ? (
+        <Pressable
+          onPress={() => setLegendOpen(true)}
+          style={{
+            backgroundColor: "rgba(0,0,0,0.75)",
+            paddingVertical: 8,
+            paddingHorizontal: 12,
+            borderRadius: 10,
+          }}
+        >
+          <Text style={{ color: "#fff", fontSize: 11, fontWeight: "700" }}>
+            LEGEND
+          </Text>
+        </Pressable>
+      ) : (
+        <View
+          style={{
+            backgroundColor: "rgba(0,0,0,0.85)",
+            borderRadius: 12,
+            padding: 12,
+            width: 170,
+          }}
+        >
+          <Pressable
+            onPress={() => setLegendOpen(false)}
+            style={{ marginBottom: 6 }}
+          >
+            <Text style={{ color: "#aaa", fontSize: 10 }}>HIDE</Text>
+          </Pressable>
+
+          <Text style={{ color: "#aaa", fontSize: 10, marginBottom: 4 }}>
+            SEVERITY
+          </Text>
+          <Text style={{ color: "#fff", fontSize: 10 }}>🔴 HIGH</Text>
+          <Text style={{ color: "#fff", fontSize: 10 }}>🟠 MEDIUM</Text>
+          <Text style={{ color: "#fff", fontSize: 10, marginBottom: 6 }}>
+            🟢 LOW
+          </Text>
+
+          <Text style={{ color: "#aaa", fontSize: 10, marginBottom: 4 }}>
+            TYPE
+          </Text>
+          <Text style={{ color: "#fff", fontSize: 10 }}>● Pothole</Text>
+          <Text style={{ color: "#fff", fontSize: 10 }}>▲ Flood</Text>
+          <Text style={{ color: "#fff", fontSize: 10 }}>■ Obstruction</Text>
+        </View>
+      )}
+    </View>
+  );
 
   return (
     <View style={{ flex: 1 }}>
