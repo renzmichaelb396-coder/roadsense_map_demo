@@ -68,6 +68,12 @@ export default function LGUMap() {
   const [legendOpen, setLegendOpen] = useState(false);
   const [severity, setSeverity] = useState<1 | 2 | 3>(2);
   const [type, setType] = useState<HazardType>("pothole");
+  function uiSeverityToDb(sev: number): "LOW" | "MEDIUM" | "HIGH" {
+    if (sev === 3) return "HIGH";
+    if (sev === 2) return "MEDIUM";
+    return "LOW";
+  }
+
 
   // LGU filters
   const [severityFilter, setSeverityFilter] = useState<Record<number, boolean>>({
@@ -84,15 +90,30 @@ export default function LGUMap() {
   });
   const [showResolved, setShowResolved] = useState(true);
 
+  
   async function safeReloadHazards() {
     try {
       const next = await fetchHazards();
-      setHazards(Array.isArray(next) ? next : []);
+      if (!Array.isArray(next)) {
+        setHazards([]);
+        return;
+      }
+
+      const normalized = next.map((h: any) => ({
+        ...h,
+        severity:
+          h.severity === "HIGH" ? 3 :
+          h.severity === "MEDIUM" ? 2 :
+          1,
+      }));
+
+      setHazards(normalized);
     } catch (e) {
       console.warn("[LGUMap] fetchHazards failed", e);
       setHazards([]);
     }
   }
+
 
   // Location bootstrap + initial load
   useEffect(() => {
@@ -157,7 +178,7 @@ export default function LGUMap() {
       await createHazard({
         latitude: coord.latitude,
         longitude: coord.longitude,
-        severity,
+        severity: uiSeverityToDb(severity),
         type,
       });
 
