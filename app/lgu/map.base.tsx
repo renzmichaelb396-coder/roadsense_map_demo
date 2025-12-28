@@ -681,35 +681,7 @@ export default function LGUMap() {
                 latitude: Number(h.latitude),
                 longitude: Number(h.longitude),
               }}
-              >
-                {(() => {
-                  const v = markerVisual(h.severity, h.type, safeStatus(h) === "resolved");
-                  if (v.shape === "triangle") {
-                    return (
-                      <View style={{
-                        width: 0,
-                        height: 0,
-                        opacity: v.opacity,
-                        borderLeftWidth: v.size / 2,
-                        borderRightWidth: v.size / 2,
-                        borderBottomWidth: v.size,
-                        borderLeftColor: "transparent",
-                        borderRightColor: "transparent",
-                        borderBottomColor: v.color,
-                      }} />
-                    );
-                  }
-                  return (
-                    <View style={{
-                      width: v.size,
-                      height: v.size,
-                      opacity: v.opacity,
-                      backgroundColor: v.color,
-                      transform: v.shape === "diamond" ? [{ rotate: "45deg" }] : [],
-                      borderRadius: v.shape === "circle" ? v.size / 2 : 2,
-                    }} />
-                  );
-                })()}
+              pinColor={h.severity === 3 ? "red" : h.severity === 2 ? "orange" : "green"}
               opacity={opacity}
               tracksViewChanges={false}
               onPress={() => onMarkerPress(String(h.id))}
