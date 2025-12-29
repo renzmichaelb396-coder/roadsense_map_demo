@@ -1,34 +1,50 @@
-import { supabase } from "./supabase";
-import { v4 as uuidv4 } from "uuid";
-
-export type HazardStatus = "reported" | "resolved";
+import { supabase as _supabase } from "./supabase";
+const supabase = _supabase!;
 
 export type Hazard = {
   id: string;
   latitude: number;
   longitude: number;
   type: string;
-  severity: number; // 1|2|3
-  status: HazardStatus;
+  severity: number; // UI: 1 | 2 | 3
+  resolved: boolean;
+  deleted_at?: string | null;
   created_at?: string | null;
 };
 
-function requireSupabase() {
-  // In Expo Go / dev, missing env happens. Don't freeze splash—return null and let UI load.
-  return supabase;
+/**
+ * DB → UI normalization
+ * DB: "LOW" | "MEDIUM" | "HIGH"
+ * UI: 1 | 2 | 3
+ */
+function dbSeverityToUi(sev: unknown): number {
+  if (sev === "HIGH") return 3;
+  if (sev === "MEDIUM") return 2;
+  return 1;
+}
+
+/**
+ * UI → DB normalization
+ */
+function uiSeverityToDb(sev: unknown): "LOW" | "MEDIUM" | "HIGH" {
+  if (sev === 3 || sev === "HIGH") return "HIGH";
+  if (sev === 2 || sev === "MEDIUM") return "MEDIUM";
+  return "LOW";
 }
 
 export async function fetchHazards(): Promise<Hazard[]> {
-  const sb = requireSupabase();
-  if (!sb) return [];
-
-  const { data, error } = await sb
+  const { data, error } = await supabase
     .from("hazards")
     .select("*")
     .order("created_at", { ascending: false });
 
   if (error) throw error;
-  return (data ?? []) as Hazard[];
+  if (!Array.isArray(data)) return [];
+
+  return data.map((h: any) => ({
+    ...h,
+    severity: dbSeverityToUi(h.severity),
+  })) as Hazard[];
 }
 
 export async function createHazard(input: {
@@ -37,43 +53,51 @@ export async function createHazard(input: {
   type: string;
   severity: number;
 }): Promise<Hazard> {
-  const sb = requireSupabase();
-  const hazard: Hazard = {
-    id: uuidv4(),
-    latitude: input.latitude,
-    longitude: input.longitude,
-    type: input.type,
-    severity: input.severity,
-    status: "reported",
-  };
+  const dbSeverity = uiSeverityToDb(input.severity);
 
-  if (!sb) return hazard;
+  const { data, error } = await supabase
+    .from("hazards")
+    .insert({
+      latitude: input.latitude,
+      longitude: input.longitude,
+      type: input.type,
+      severity: dbSeverity,
+      resolved: false,
+    })
+    .select()
+    .single();
 
-  const { error } = await sb.from("hazards").insert({
-    id: hazard.id,
-    latitude: hazard.latitude,
-    longitude: hazard.longitude,
-    type: hazard.type,
-    severity: hazard.severity,
-    status: hazard.status,
-  });
+  if (error) {
+    console.error("SUPABASE createHazard error:", error);
+    throw error;
+  }
 
-  if (error) throw error;
-  return hazard;
+  return {
+    ...(data as any),
+    severity: dbSeverityToUi(data.severity),
+  } as Hazard;
 }
 
-export async function resolveHazard(id: string) {
-  const sb = requireSupabase();
-  if (!sb) return;
+export async function resolveHazard(id: string): Promise<void> {
+  const { error } = await supabase
+    .from("hazards")
+    .update({ resolved: true })
+    .eq("id", id);
 
-  const { error } = await sb.from("hazards").update({ status: "resolved" }).eq("id", id);
-  if (error) throw error;
+  if (error) {
+    console.error("SUPABASE resolveHazard error:", error);
+    throw error;
+  }
 }
 
-export async function deleteHazard(id: string) {
-  const sb = requireSupabase();
-  if (!sb) return;
+export async function deleteHazard(id: string): Promise<void> {
+  const { error } = await supabase
+    .from("hazards")
+    .update({ deleted_at: new Date().toISOString() })
+    .eq("id", id);
 
-  const { error } = await sb.from("hazards").delete().eq("id", id);
-  if (error) throw error;
+  if (error) {
+    console.error("SUPABASE deleteHazard error:", error);
+    throw error;
+  }
 }

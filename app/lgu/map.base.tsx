@@ -42,7 +42,8 @@ function severityColor(sev: number) {
 }
 
 function safeStatus(h: any): "reported" | "resolved" {
-  return h?.status === "resolved" ? "resolved" : "reported";
+  if (h?.deleted_at) return "resolved";
+  return h?.resolved === true ? "resolved" : "reported";
 }
 
 function shortTypeLabel(t: string) {
@@ -65,15 +66,8 @@ export default function LGUMap() {
 
   // Center-pin placement mode (LOCKED)
   const [placementMode, setPlacementMode] = useState(false);
-  const [legendOpen, setLegendOpen] = useState(false);
   const [severity, setSeverity] = useState<1 | 2 | 3>(2);
   const [type, setType] = useState<HazardType>("pothole");
-  function uiSeverityToDb(sev: number): "LOW" | "MEDIUM" | "HIGH" {
-    if (sev === 3) return "HIGH";
-    if (sev === 2) return "MEDIUM";
-    return "LOW";
-  }
-
 
   // LGU filters
   const [severityFilter, setSeverityFilter] = useState<Record<number, boolean>>({
@@ -90,30 +84,15 @@ export default function LGUMap() {
   });
   const [showResolved, setShowResolved] = useState(true);
 
-  
   async function safeReloadHazards() {
     try {
       const next = await fetchHazards();
-      if (!Array.isArray(next)) {
-        setHazards([]);
-        return;
-      }
-
-      const normalized = next.map((h: any) => ({
-        ...h,
-        severity:
-          h.severity === "HIGH" ? 3 :
-          h.severity === "MEDIUM" ? 2 :
-          1,
-      }));
-
-      setHazards(normalized);
+      setHazards(Array.isArray(next) ? next : []);
     } catch (e) {
       console.warn("[LGUMap] fetchHazards failed", e);
       setHazards([]);
     }
   }
-
 
   // Location bootstrap + initial load
   useEffect(() => {
@@ -178,7 +157,7 @@ export default function LGUMap() {
       await createHazard({
         latitude: coord.latitude,
         longitude: coord.longitude,
-        severity: uiSeverityToDb(severity),
+        severity,
         type,
       });
 
@@ -196,7 +175,9 @@ export default function LGUMap() {
     setSelectedId(id);
   }
 
-  async function resolveSelected() {
+  
+async function resolveSelected() {
+      console.log("[LGUMap] resolveSelected pressed", selected?.id);
     if (!selected || isMutating) return;
     try {
       setIsMutating(true);
@@ -209,7 +190,9 @@ export default function LGUMap() {
     }
   }
 
-  async function deleteSelected() {
+  
+async function deleteSelected() {
+      console.log("[LGUMap] deleteSelected pressed", selected?.id);
     if (!selected || isMutating) return;
 
     const id = String((selected as any).id);
@@ -237,7 +220,6 @@ export default function LGUMap() {
       longitudeDelta: 0.06,
     };
 
-    setRegion(r);
     mapRef.current.animateToRegion(r, 350);
   }
 
@@ -249,6 +231,7 @@ export default function LGUMap() {
 
   const visibleHazards = useMemo(() => {
     return hazardsStable.filter((h: any) => {
+        if (h?.deleted_at) return false;
       const st = safeStatus(h);
       if (!showResolved && st === "resolved") return false;
       if (!severityFilter[h.severity]) return false;
@@ -262,7 +245,8 @@ export default function LGUMap() {
     let active = 0, resolved = 0;
 
     for (const h of hazardsStable as any[]) {
-      const st = safeStatus(h);
+        if (h?.deleted_at) continue;
+        const st = safeStatus(h);
       if (st === "resolved") resolved++;
       else active++;
 
@@ -670,74 +654,13 @@ export default function LGUMap() {
     </View>
   ) : null;
 
-  const legendOverlay = (
-    <View
-      pointerEvents="box-none"
-      style={{
-        position: "absolute",
-        bottom: 110,
-        left: 12,
-        zIndex: 20,
-      }}
-    >
-      {!legendOpen ? (
-        <Pressable
-          onPress={() => setLegendOpen(true)}
-          style={{
-            backgroundColor: "rgba(0,0,0,0.75)",
-            paddingVertical: 8,
-            paddingHorizontal: 12,
-            borderRadius: 10,
-          }}
-        >
-          <Text style={{ color: "#fff", fontSize: 11, fontWeight: "700" }}>
-            LEGEND
-          </Text>
-        </Pressable>
-      ) : (
-        <View
-          style={{
-            backgroundColor: "rgba(0,0,0,0.85)",
-            borderRadius: 12,
-            padding: 12,
-            width: 170,
-          }}
-        >
-          <Pressable
-            onPress={() => setLegendOpen(false)}
-            style={{ marginBottom: 6 }}
-          >
-            <Text style={{ color: "#aaa", fontSize: 10 }}>HIDE</Text>
-          </Pressable>
-
-          <Text style={{ color: "#aaa", fontSize: 10, marginBottom: 4 }}>
-            SEVERITY
-          </Text>
-          <Text style={{ color: "#fff", fontSize: 10 }}>🔴 HIGH</Text>
-          <Text style={{ color: "#fff", fontSize: 10 }}>🟠 MEDIUM</Text>
-          <Text style={{ color: "#fff", fontSize: 10, marginBottom: 6 }}>
-            🟢 LOW
-          </Text>
-
-          <Text style={{ color: "#aaa", fontSize: 10, marginBottom: 4 }}>
-            TYPE
-          </Text>
-          <Text style={{ color: "#fff", fontSize: 10 }}>● Pothole</Text>
-          <Text style={{ color: "#fff", fontSize: 10 }}>▲ Flood</Text>
-          <Text style={{ color: "#fff", fontSize: 10 }}>■ Obstruction</Text>
-        </View>
-      )}
-    </View>
-  );
-
   return (
     <View style={{ flex: 1 }}>
       <MapView
-            ref={mapRef}
-        ref={(r) => (mapRef.current = r)}
+        ref={(r) => { mapRef.current = r; }}
         style={{ flex: 1 }}
-        initialRegion={region}
-        onLongPress={(e: MapPressEvent) => {
+        initialRegion={DEFAULT_REGION}
+        onLongPress={() => {
           // LOCKED: long-press primary trigger
           if (!isMutating) enterPlacingMode();
         }}

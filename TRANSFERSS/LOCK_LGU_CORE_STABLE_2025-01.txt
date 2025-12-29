@@ -1,0 +1,1 @@
+LGU core lifecycle stable: create/resolve/delete/counts verified on Android. Locked before marker visuals.
