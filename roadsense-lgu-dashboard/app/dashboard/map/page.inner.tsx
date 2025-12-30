@@ -78,5 +78,27 @@ export default function MapPageInner({ hazards }: { hazards: Hazard[] }) {
     return () => map.remove();
   }, [hazards]);
 
-  return <div ref={containerRef} style={{ height: "100vh", width: "100%" }} />;
+  const showEmpty = Boolean(process.env.NEXT_PUBLIC_MAPBOX_TOKEN) && hazards.length === 0;
+
+  return (
+    <div style={{ position: "relative", height: "100vh", width: "100%" }}>
+      <div ref={containerRef} style={{ height: "100%", width: "100%" }} />
+      {showEmpty && (
+        <div
+          style={{
+            position: "absolute",
+            top: 12,
+            left: 12,
+            background: "rgba(0,0,0,0.75)",
+            color: "#fff",
+            padding: "10px 12px",
+            borderRadius: 8,
+            fontSize: 13,
+          }}
+        >
+          No hazards to display.
+        </div>
+      )}
+    </div>
+  );
 }
