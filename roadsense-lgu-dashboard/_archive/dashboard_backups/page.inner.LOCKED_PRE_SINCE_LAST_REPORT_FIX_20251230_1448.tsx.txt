@@ -1,0 +1,253 @@
+"use client";
+
+import { useMemo, useState, useEffect } from "react";
+import HazardReportTable from "./components/HazardReportTable";
+
+type Severity = "HIGH" | "MEDIUM" | "LOW";
+type RawStatus = "reported" | "resolved";
+type StatusNorm = "ACTIVE" | "RESOLVED";
+
+type Hazard = {
+  id: string;
+  type: string;
+  severity: Severity;
+  status: RawStatus;
+  latitude: number;
+  longitude: number;
+  created_at: string;
+};
+
+/* ------------------------------------------------------------------ */
+/* EXECUTIVE DEMO DATA — UI ONLY                                       */
+/* ------------------------------------------------------------------ */
+const DEMO_HAZARDS: Hazard[] = [
+  {
+    id: "demo-1",
+    type: "Pothole Cluster",
+    severity: "HIGH",
+    status: "reported",
+    latitude: 14.5995,
+    longitude: 120.9842,
+    created_at: daysAgo(12),
+  },
+  {
+    id: "demo-2",
+    type: "Flooded Section",
+    severity: "HIGH",
+    status: "reported",
+    latitude: 14.6091,
+    longitude: 120.9946,
+    created_at: daysAgo(7),
+  },
+  {
+    id: "demo-3",
+    type: "Road Subsidence",
+    severity: "MEDIUM",
+    status: "reported",
+    latitude: 14.5764,
+    longitude: 121.0851,
+    created_at: daysAgo(5),
+  },
+  {
+    id: "demo-4",
+    type: "Cracked Pavement",
+    severity: "LOW",
+    status: "reported",
+    latitude: 14.5547,
+    longitude: 121.0244,
+    created_at: daysAgo(2),
+  },
+  {
+    id: "demo-5",
+    type: "Sinkhole (Resolved)",
+    severity: "HIGH",
+    status: "resolved",
+    latitude: 14.676,
+    longitude: 121.0437,
+    created_at: daysAgo(20),
+  },
+];
+
+function daysAgo(days: number) {
+  const d = new Date();
+  d.setDate(d.getDate() - days);
+  return d.toISOString();
+}
+
+export default function DashboardInner({ hazards }: { hazards: Hazard[] }) {
+  const [priorityView, setPriorityView] = useState(true);
+  const [demoMode, setDemoMode] = useState(false);
+  const [lastReportTs, setLastReportTs] = useState<number | null>(null);
+
+  /* -------------------------------------------------------------- */
+  /* SESSION PERSISTENCE                                            */
+  /* -------------------------------------------------------------- */
+  useEffect(() => {
+    const demo = sessionStorage.getItem("EXEC_DEMO_MODE");
+    const last = sessionStorage.getItem("LAST_REPORT_TS");
+
+    if (demo === "true") setDemoMode(true);
+    if (last) setLastReportTs(Number(last));
+    if (!last) {
+      const now = Date.now();
+      sessionStorage.setItem("LAST_REPORT_TS", String(now));
+      setLastReportTs(now);
+    }
+  }, []);
+
+  useEffect(() => {
+    sessionStorage.setItem("EXEC_DEMO_MODE", demoMode ? "true" : "false");
+  }, [demoMode]);
+
+  const activeHazards = demoMode ? DEMO_HAZARDS : hazards;
+
+  const normalized = useMemo(() => {
+    return activeHazards.map((h) => ({
+      ...h,
+      statusNorm: h.status === "reported" ? "ACTIVE" : "RESOLVED",
+      ageDays: Math.floor(
+        (Date.now() - new Date(h.created_at).getTime()) /
+          (1000 * 60 * 60 * 24)
+      ),
+      createdTs: new Date(h.created_at).getTime(),
+    }));
+  }, [activeHazards]);
+
+  function getActionLabel(h: Hazard) {
+    if (h.status === "resolved") return "Resolved";
+    if (h.severity === "HIGH") return "Needs Immediate Action";
+    if (h.severity === "MEDIUM") return "Schedule Repair";
+    return "Monitor";
+  }
+
+  const processed = useMemo(() => {
+    let list = [...normalized];
+
+    if (priorityView) {
+      list.sort((a, b) => {
+        if (a.statusNorm !== b.statusNorm) {
+          return a.statusNorm === "ACTIVE" ? -1 : 1;
+        }
+        const sevRank = { HIGH: 1, MEDIUM: 2, LOW: 3 };
+        if (sevRank[a.severity] !== sevRank[b.severity]) {
+          return sevRank[a.severity] - sevRank[b.severity];
+        }
+        return b.ageDays - a.ageDays;
+      });
+    }
+
+    return list;
+  }, [normalized, priorityView]);
+
+  /* -------------------------------------------------------------- */
+  /* SINCE LAST REPORT METRICS                                      */
+  /* -------------------------------------------------------------- */
+  const sinceLast = useMemo(() => {
+    if (!lastReportTs) return null;
+
+    const newHazards = normalized.filter(
+      (h) => h.createdTs > lastReportTs
+    );
+    const newHigh = newHazards.filter((h) => h.severity === "HIGH");
+    const resolved = normalized.filter(
+      (h) => h.status === "resolved" && h.createdTs > lastReportTs
+    );
+    const overdueHigh = normalized.filter(
+      (h) =>
+        h.statusNorm === "ACTIVE" &&
+        h.severity === "HIGH" &&
+        h.ageDays >= 7
+    );
+
+    return {
+      newCount: newHazards.length,
+      newHighCount: newHigh.length,
+      resolvedCount: resolved.length,
+      overdueHighCount: overdueHigh.length,
+    };
+  }, [normalized, lastReportTs]);
+
+  const counts = {
+    immediate: processed.filter(
+      (h) => getActionLabel(h) === "Needs Immediate Action"
+    ).length,
+    scheduled: processed.filter(
+      (h) => getActionLabel(h) === "Schedule Repair"
+    ).length,
+    monitoring: processed.filter(
+      (h) => getActionLabel(h) === "Monitor"
+    ).length,
+  };
+
+  return (
+    <div>
+      <div style={{ display: "flex", gap: 12, marginBottom: 8 }}>
+        <button
+          onClick={() => setPriorityView(true)}
+          style={{ fontWeight: priorityView ? 700 : 400 }}
+        >
+          Priority View
+        </button>
+        <button
+          onClick={() => setPriorityView(false)}
+          style={{ fontWeight: !priorityView ? 700 : 400 }}
+        >
+          All Reports
+        </button>
+
+        <label style={{ marginLeft: 16 }}>
+          <input
+            type="checkbox"
+            checked={demoMode}
+            onChange={(e) => setDemoMode(e.target.checked)}
+          />{" "}
+          Executive Demo Mode
+        </label>
+
+        <div style={{ marginLeft: "auto", fontWeight: 700 }}>
+          🔴 {counts.immediate} &nbsp; 🟠 {counts.scheduled} &nbsp; 🟢{" "}
+          {counts.monitoring}
+        </div>
+      </div>
+
+      {/* SINCE LAST REPORT */}
+      <div
+        style={{
+          padding: "8px 12px",
+          marginBottom: 12,
+          borderRadius: 8,
+          background: "#0f172a",
+          fontSize: 13,
+        }}
+      >
+        <b>Since last report:</b>{" "}
+        {sinceLast &&
+        (sinceLast.newCount ||
+          sinceLast.resolvedCount ||
+          sinceLast.overdueHighCount) ? (
+          <>
+            {sinceLast.newHighCount > 0 && (
+              <>🔴 {sinceLast.newHighCount} new HIGH priority hazards · </>
+            )}
+            {sinceLast.newCount - sinceLast.newHighCount > 0 && (
+              <>➕ {sinceLast.newCount} new hazards · </>
+            )}
+            {sinceLast.resolvedCount > 0 && (
+              <>✅ {sinceLast.resolvedCount} resolved · </>
+            )}
+            {sinceLast.overdueHighCount > 0 && (
+              <>⏰ {sinceLast.overdueHighCount} HIGH hazards overdue</>
+            )}
+          </>
+        ) : (
+          <>No significant changes</>
+        )}
+      </div>
+
+      <HazardReportTable
+        hazards={processed}
+        getActionLabel={getActionLabel}
+      />
+    </div>
+  );
+}

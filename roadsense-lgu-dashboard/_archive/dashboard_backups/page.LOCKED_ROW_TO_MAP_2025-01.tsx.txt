@@ -1,0 +1,131 @@
+"use client";
+
+import "mapbox-gl/dist/mapbox-gl.css";
+
+import { useEffect, useRef, useState } from "react";
+import mapboxgl from "mapbox-gl";
+import { useSearchParams } from "next/navigation";
+import { supabase } from "@/lib/supabase";
+import HazardReportTable from "@/app/dashboard/components/HazardReportTable";
+
+mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN!;
+
+type Severity = "HIGH" | "MEDIUM" | "LOW";
+type Status = "reported" | "resolved" | "ACTIVE";
+
+type Hazard = {
+  id: string;
+  type: string | null;
+  severity: Severity;
+  status: Status;
+  latitude: number;
+  longitude: number;
+  created_at: string;
+};
+
+const SEVERITY_COLOR: Record<Severity, string> = {
+  HIGH: "#dc2626",
+  MEDIUM: "#f59e0b",
+  LOW: "#16a34a",
+};
+
+function hazardLetter(type: string | null) {
+  const t = (type || "").toLowerCase();
+  if (t === "pothole") return "P";
+  if (t === "crack") return "C";
+  if (t === "construction") return "R";
+  if (t === "flood") return "F";
+  if (t === "debris") return "D";
+  return "?";
+}
+
+function createLGUMarker(h: Hazard) {
+  const el = document.createElement("div");
+  el.style.cssText = `
+    width:40px;height:40px;border-radius:999px;
+    background:${SEVERITY_COLOR[h.severity]};
+    color:#fff;font-weight:900;font-size:18px;
+    display:flex;align-items:center;justify-content:center;
+    border:3px solid #fff;
+    box-shadow:0 0 0 2px rgba(0,0,0,.55),0 6px 14px rgba(0,0,0,.45);
+    opacity:${h.status === "resolved" ? 0.45 : 1};
+    cursor:pointer;
+  `;
+  el.textContent = hazardLetter(h.type);
+  return el;
+}
+
+export default function DashboardMap() {
+  const mapRef = useRef<mapboxgl.Map | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const markersRef = useRef<Record<string, mapboxgl.Marker>>({});
+  const searchParams = useSearchParams();
+  const focusId = searchParams.get("hazard");
+
+  const [hazards, setHazards] = useState<Hazard[]>([]);
+
+  useEffect(() => {
+    const map = new mapboxgl.Map({
+      container: containerRef.current!,
+      style: "mapbox://styles/mapbox/streets-v11",
+      center: [120.9842, 14.5995],
+      zoom: 11,
+    });
+
+    mapRef.current = map;
+
+    supabase
+      .from("hazards")
+      .select("id,type,severity,status,latitude,longitude,created_at")
+      .then(({ data }) => {
+        if (!data) return;
+
+        setHazards(data as Hazard[]);
+
+        data.forEach(h => {
+          if (!h.latitude || !h.longitude) return;
+
+          const popup = new mapboxgl.Popup({ offset: 16 }).setHTML(`
+            <div style="background:#0b0b0b;color:#fff;padding:14px;border-radius:12px">
+              <b>${(h.type || "UNKNOWN").toUpperCase()}</b><br/>
+              <span style="color:${SEVERITY_COLOR[h.severity]}">${h.severity}</span><br/>
+              ${new Date(h.created_at).toLocaleString()}
+            </div>
+          `);
+
+          const marker = new mapboxgl.Marker({
+            element: createLGUMarker(h),
+          })
+            .setLngLat([h.longitude, h.latitude])
+            .setPopup(popup)
+            .addTo(map);
+
+          markersRef.current[h.id] = marker;
+
+          if (focusId && h.id === focusId) {
+            map.flyTo({
+              center: [h.longitude, h.latitude],
+              zoom: 16,
+              essential: true,
+            });
+            popup.addTo(map);
+          }
+        });
+      });
+
+    return () => map.remove();
+  }, [focusId]);
+
+  return (
+    <>
+      <div
+        ref={containerRef}
+        style={{ width: "100%", height: "100vh" }}
+      />
+
+      <div style={{ padding: 24 }}>
+        <HazardReportTable hazards={hazards} />
+      </div>
+    </>
+  );
+}

@@ -1,0 +1,159 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import HazardReportTable from "./components/HazardReportTable";
+
+/** TYPES (LOCAL, STABLE) */
+type Severity = "HIGH" | "MEDIUM" | "LOW";
+type RawStatus = "reported" | "resolved";
+
+type Hazard = {
+  id: string;
+  type: string;
+  severity: Severity;
+  status: RawStatus;
+  created_at: string;
+  latitude: number;
+  longitude: number;
+};
+
+/** ACTION REQUIRED — UI ONLY */
+function getActionLabel(h: Hazard) {
+  if (h.status === "resolved") return "Resolved";
+  if (h.severity === "HIGH") return "Needs Immediate Action";
+  if (h.severity === "MEDIUM") return "Schedule Repair";
+  return "Monitor";
+}
+
+/** PRIORITY RANKING */
+function getPriorityRank(h: Hazard) {
+  if (h.status === "resolved") return 99;
+  if (h.severity === "HIGH") return 0;
+  if (h.severity === "MEDIUM") return 1;
+  return 2;
+}
+
+/** DAYS OPEN */
+function daysOpen(createdAt: string) {
+  const ms = Date.now() - new Date(createdAt).getTime();
+  return Math.floor(ms / (1000 * 60 * 60 * 24));
+}
+
+export default function DashboardPageInner({
+  hazards,
+}: {
+  hazards: Hazard[];
+}) {
+  const [priorityView, setPriorityView] = useState(true);
+  const [sinceSummary, setSinceSummary] = useState<{
+    newCount: number;
+    resolvedCount: number;
+    overdueCount: number;
+  } | null>(null);
+
+  /** SINCE LAST REPORT — SESSION ONLY */
+  useEffect(() => {
+    const key = "roadsense:lastHazardSnapshot";
+    const prevRaw = sessionStorage.getItem(key);
+    const prev: Hazard[] = prevRaw ? JSON.parse(prevRaw) : [];
+
+    const prevIds = new Set(prev.map((h) => h.id));
+
+    const newCount = hazards.filter(
+      (h) => !prevIds.has(h.id)
+    ).length;
+
+    const resolvedCount = hazards.filter((h) => {
+      const prevH = prev.find((p) => p.id === h.id);
+      return prevH && prevH.status === "reported" && h.status === "resolved";
+    }).length;
+
+    const overdueCount = hazards.filter(
+      (h) => h.status === "reported" && daysOpen(h.created_at) >= 7
+    ).length;
+
+    setSinceSummary({ newCount, resolvedCount, overdueCount });
+
+    sessionStorage.setItem(key, JSON.stringify(hazards));
+  }, [hazards]);
+
+  /** PRIORITY QUEUE */
+  const processed = useMemo(() => {
+    const list = [...hazards];
+
+    if (priorityView) {
+      list.sort((a, b) => {
+        if (a.status !== b.status) {
+          return a.status === "reported" ? -1 : 1;
+        }
+        const pr = getPriorityRank(a) - getPriorityRank(b);
+        if (pr !== 0) return pr;
+        return (
+          new Date(a.created_at).getTime() -
+          new Date(b.created_at).getTime()
+        );
+      });
+    }
+
+    return list;
+  }, [hazards, priorityView]);
+
+  const counts = {
+    immediate: processed.filter(
+      (h) => getActionLabel(h) === "Needs Immediate Action"
+    ).length,
+    scheduled: processed.filter(
+      (h) => getActionLabel(h) === "Schedule Repair"
+    ).length,
+    monitoring: processed.filter(
+      (h) => getActionLabel(h) === "Monitor"
+    ).length,
+  };
+
+  return (
+    <div>
+      {sinceSummary && (
+        <div
+          style={{
+            padding: 12,
+            borderRadius: 8,
+            background: "#111827",
+            marginBottom: 16,
+            fontSize: 14,
+          }}
+        >
+          <b>Since Last Report</b>
+          <div style={{ marginTop: 6 }}>
+            ➕ {sinceSummary.newCount} new hazards &nbsp; | &nbsp;
+            ✓ {sinceSummary.resolvedCount} resolved &nbsp; | &nbsp;
+            ⚠️ {sinceSummary.overdueCount} overdue (7+ days)
+          </div>
+        </div>
+      )}
+
+      <div style={{ display: "flex", gap: 12, marginBottom: 12 }}>
+        <button
+          onClick={() => setPriorityView(true)}
+          style={{ fontWeight: priorityView ? 700 : 400 }}
+        >
+          Priority View
+        </button>
+        <button
+          onClick={() => setPriorityView(false)}
+          style={{ fontWeight: !priorityView ? 700 : 400 }}
+        >
+          All Reports
+        </button>
+        <div style={{ marginLeft: "auto", fontWeight: 700 }}>
+          🔴 {counts.immediate} &nbsp; 🟠 {counts.scheduled} &nbsp; 🟢{" "}
+          {counts.monitoring}
+        </div>
+      </div>
+
+      <HazardReportTable
+        hazards={processed}
+        getActionLabel={getActionLabel}
+      />
+    </div>
+  );
+}

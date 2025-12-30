@@ -1,0 +1,112 @@
+"use client";
+
+import { useMemo, useState } from "react";
+import HazardReportTable from "./components/HazardReportTable";
+
+/** LOCAL TYPES — NO EXTERNAL IMPORTS */
+type Severity = "HIGH" | "MEDIUM" | "LOW";
+type RawStatus = "reported" | "resolved";
+type StatusNorm = "ACTIVE" | "RESOLVED";
+
+type Hazard = {
+  id: string;
+  type: string;
+  severity: Severity;
+  status: RawStatus;
+  created_at: string;
+  latitude: number;
+  longitude: number;
+};
+
+/** LGU ACTION REQUIRED — DERIVED, UI ONLY */
+function getActionLabel(h: Hazard) {
+  if (h.status === "resolved") return "Resolved";
+  if (h.severity === "HIGH") return "Needs Immediate Action";
+  if (h.severity === "MEDIUM") return "Schedule Repair";
+  return "Monitor";
+}
+
+/** RANK FOR PRIORITY QUEUE */
+function getPriorityRank(h: Hazard) {
+  if (h.status === "resolved") return 99;
+  if (h.severity === "HIGH") return 0;
+  if (h.severity === "MEDIUM") return 1;
+  return 2;
+}
+
+export default function DashboardPageInner({
+  hazards,
+}: {
+  hazards: Hazard[];
+}) {
+  const [priorityView, setPriorityView] = useState(true);
+
+  const processed = useMemo(() => {
+    let list = [...hazards];
+
+    if (priorityView) {
+      list = list
+        .sort((a, b) => {
+          // Active first
+          if (a.status !== b.status) {
+            return a.status === "reported" ? -1 : 1;
+          }
+          // Priority rank
+          const pr = getPriorityRank(a) - getPriorityRank(b);
+          if (pr !== 0) return pr;
+          // Oldest first
+          return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+        });
+    } else {
+      list = list.sort((a, b) => {
+        if (a.status !== b.status) {
+          return a.status === "reported" ? -1 : 1;
+        }
+        const severityOrder = { HIGH: 0, MEDIUM: 1, LOW: 2 };
+        return severityOrder[a.severity] - severityOrder[b.severity];
+      });
+    }
+
+    return list;
+  }, [hazards, priorityView]);
+
+  const counts = {
+    immediate: processed.filter(
+      (h) => getActionLabel(h) === "Needs Immediate Action"
+    ).length,
+    scheduled: processed.filter(
+      (h) => getActionLabel(h) === "Schedule Repair"
+    ).length,
+    monitoring: processed.filter(
+      (h) => getActionLabel(h) === "Monitor"
+    ).length,
+  };
+
+  return (
+    <div>
+      <div style={{ display: "flex", gap: 12, marginBottom: 12 }}>
+        <button
+          onClick={() => setPriorityView(true)}
+          style={{ fontWeight: priorityView ? 700 : 400 }}
+        >
+          Priority View
+        </button>
+        <button
+          onClick={() => setPriorityView(false)}
+          style={{ fontWeight: !priorityView ? 700 : 400 }}
+        >
+          All Reports
+        </button>
+        <div style={{ marginLeft: "auto", fontWeight: 700 }}>
+          🔴 {counts.immediate} &nbsp; 🟠 {counts.scheduled} &nbsp; 🟢{" "}
+          {counts.monitoring}
+        </div>
+      </div>
+
+      <HazardReportTable
+        hazards={processed}
+        getActionLabel={getActionLabel}
+      />
+    </div>
+  );
+}

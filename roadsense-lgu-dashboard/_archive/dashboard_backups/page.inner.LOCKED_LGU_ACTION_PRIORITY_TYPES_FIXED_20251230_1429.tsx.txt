@@ -1,0 +1,105 @@
+"use client";
+
+import { useMemo, useState } from "react";
+import HazardReportTable from "./components/HazardReportTable";
+
+/** LOCAL TYPES — NO EXTERNAL IMPORTS */
+type Severity = "HIGH" | "MEDIUM" | "LOW";
+type RawStatus = "reported" | "resolved";
+type StatusNorm = "ACTIVE" | "RESOLVED";
+
+type Hazard = {
+  id: string;
+  type: string;
+  severity: Severity;
+  status: RawStatus;
+  created_at: string;
+  latitude: number;
+  longitude: number;
+};
+
+function normalizeStatus(status: RawStatus): StatusNorm {
+  return status === "reported" ? "ACTIVE" : "RESOLVED";
+}
+
+/** 🔴🟠🟢⚪ LGU ACTION LOGIC — SINGLE SOURCE */
+function getActionLabel(h: Hazard) {
+  if (h.status === "resolved") return "Resolved";
+  if (h.severity === "HIGH") return "Needs Immediate Action";
+  if (h.severity === "MEDIUM") return "Schedule Repair";
+  return "Monitor";
+}
+
+function getActionRank(h: Hazard) {
+  if (h.status === "resolved") return 99;
+  if (h.severity === "HIGH") return 0;
+  if (h.severity === "MEDIUM") return 1;
+  return 2;
+}
+
+export default function DashboardPageInner({
+  hazards,
+}: {
+  hazards: Hazard[];
+}) {
+  const [priorityView, setPriorityView] = useState(true);
+
+  const processed = useMemo(() => {
+    let list = [...hazards];
+
+    if (priorityView) {
+      list = list
+        .filter((h) => h.status === "reported")
+        .sort((a, b) => {
+          const rankDiff = getActionRank(a) - getActionRank(b);
+          if (rankDiff !== 0) return rankDiff;
+          return (
+            new Date(a.created_at).getTime() -
+            new Date(b.created_at).getTime()
+          );
+        });
+    }
+
+    return list;
+  }, [hazards, priorityView]);
+
+  const counts = {
+    immediate: processed.filter(
+      (h) => getActionLabel(h) === "Needs Immediate Action"
+    ).length,
+    scheduled: processed.filter(
+      (h) => getActionLabel(h) === "Schedule Repair"
+    ).length,
+    monitoring: processed.filter(
+      (h) => getActionLabel(h) === "Monitor"
+    ).length,
+  };
+
+  return (
+    <div>
+      <div style={{ display: "flex", gap: 12, marginBottom: 12 }}>
+        <button
+          onClick={() => setPriorityView(true)}
+          style={{ fontWeight: priorityView ? 700 : 400 }}
+        >
+          Priority View
+        </button>
+        <button
+          onClick={() => setPriorityView(false)}
+          style={{ fontWeight: !priorityView ? 700 : 400 }}
+        >
+          All Reports
+        </button>
+        <div style={{ marginLeft: "auto", fontWeight: 700 }}>
+          🔴 {counts.immediate} &nbsp; 🟠 {counts.scheduled} &nbsp; 🟢{" "}
+          {counts.monitoring}
+        </div>
+      </div>
+
+      <HazardReportTable
+        hazards={processed}
+        getActionLabel={getActionLabel}
+      />
+    </div>
+  );
+}

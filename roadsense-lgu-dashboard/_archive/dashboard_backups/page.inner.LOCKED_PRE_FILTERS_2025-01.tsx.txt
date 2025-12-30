@@ -1,0 +1,111 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { supabase } from "@/lib/supabase";
+import HazardReportTable from "./components/HazardReportTable";
+
+type Severity = "HIGH" | "MEDIUM" | "LOW";
+type Status = "reported" | "resolved";
+
+type Hazard = {
+  id: string;
+  type: string | null;
+  severity: Severity;
+  status: Status;
+  created_at: string;
+  barangay?: string | null;
+  city?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+};
+
+export default function DashboardInner() {
+  const [hazards, setHazards] = useState<Hazard[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    supabase
+      .from("hazards")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .then(({ data }) => {
+        setHazards((data || []) as Hazard[]);
+        setLoading(false);
+      });
+  }, []);
+
+  const count = (sev: Severity) =>
+    hazards.filter(h => h.severity === sev && h.status === "reported").length;
+
+  const active = hazards.filter(h => h.status === "reported").length;
+  const resolved = hazards.filter(h => h.status === "resolved").length;
+
+  return (
+    <main style={{ padding: 24 }}>
+      <h1 style={{ fontSize: 28, fontWeight: 900, marginBottom: 12 }}>
+        LGU Hazard Ops
+      </h1>
+
+      {/* SUMMARY */}
+      <div style={{ display: "flex", gap: 16, marginBottom: 16 }}>
+        <Stat label="HIGH" value={count("HIGH")} color="#dc2626" />
+        <Stat label="MED" value={count("MEDIUM")} color="#f59e0b" />
+        <Stat label="LOW" value={count("LOW")} color="#16a34a" />
+      </div>
+
+      <div style={{ marginBottom: 20, opacity: 0.8 }}>
+        Active: {active} • Resolved: {resolved}
+      </div>
+
+      {/* ACTIONS */}
+      <div style={{ display: "flex", gap: 12, marginBottom: 24 }}>
+        <Link
+          href="/dashboard/map"
+          style={{
+            background: "#2563eb",
+            color: "#fff",
+            padding: "10px 16px",
+            borderRadius: 8,
+            fontWeight: 800,
+            textDecoration: "none",
+          }}
+        >
+          View Map →
+        </Link>
+      </div>
+
+      {/* TABLE */}
+      {loading ? (
+        <div>Loading reports…</div>
+      ) : (
+        <HazardReportTable hazards={hazards} />
+      )}
+    </main>
+  );
+}
+
+function Stat({
+  label,
+  value,
+  color,
+}: {
+  label: string;
+  value: number;
+  color: string;
+}) {
+  return (
+    <div
+      style={{
+        background: color + "22",
+        border: `2px solid ${color}`,
+        padding: 16,
+        borderRadius: 12,
+        minWidth: 120,
+      }}
+    >
+      <div style={{ fontWeight: 900 }}>{label}</div>
+      <div style={{ fontSize: 28, fontWeight: 900 }}>{value}</div>
+    </div>
+  );
+}

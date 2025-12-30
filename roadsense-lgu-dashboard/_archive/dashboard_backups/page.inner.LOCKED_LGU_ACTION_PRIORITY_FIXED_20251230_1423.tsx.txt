@@ -1,0 +1,121 @@
+"use client";
+
+import { useMemo, useState } from "react";
+import HazardReportTable from "./components/HazardReportTable";
+import { Severity } from "./types";
+
+type RawStatus = "reported" | "resolved";
+type StatusNorm = "ACTIVE" | "RESOLVED";
+
+type Hazard = {
+  id: string;
+  type: string;
+  severity: Severity;
+  status: RawStatus;
+  created_at: string;
+  latitude: number;
+  longitude: number;
+};
+
+const SEVERITY_RANK: Record<Severity, number> = {
+  HIGH: 0,
+  MEDIUM: 1,
+  LOW: 2,
+};
+
+function daysOpen(createdAt: string) {
+  const created = new Date(createdAt).getTime();
+  const now = Date.now();
+  return Math.floor((now - created) / (1000 * 60 * 60 * 24));
+}
+
+/** LGU ACTION REQUIRED — DERIVED, UI ONLY */
+function getActionLabel(h: Hazard) {
+  if (h.status === "resolved") return "Resolved";
+  if (h.severity === "HIGH") return "Needs Immediate Action";
+  if (h.severity === "MEDIUM") return "Schedule Repair";
+  return "Monitor";
+}
+
+function getActionRank(h: Hazard) {
+  if (h.status === "resolved") return 99;
+  if (h.severity === "HIGH") return 0;
+  if (h.severity === "MEDIUM") return 1;
+  return 2;
+}
+
+export default function DashboardPageInner({
+  hazards,
+}: {
+  hazards: Hazard[];
+}) {
+  const [severityFilter, setSeverityFilter] =
+    useState<Severity | "ALL">("ALL");
+  const [statusFilter, setStatusFilter] =
+    useState<StatusNorm | "ALL">("ALL");
+  const [priorityView, setPriorityView] = useState(true);
+
+  const processed = useMemo(() => {
+    let list = hazards.filter((h) => {
+      const sevOk =
+        severityFilter === "ALL" || h.severity === severityFilter;
+      const statusOk =
+        statusFilter === "ALL" ||
+        (statusFilter === "ACTIVE" && h.status === "reported") ||
+        (statusFilter === "RESOLVED" && h.status === "resolved");
+      return sevOk && statusOk;
+    });
+
+    if (priorityView) {
+      list = list
+        .filter((h) => h.status === "reported")
+        .sort((a, b) => {
+          const ar = getActionRank(a) - getActionRank(b);
+          if (ar !== 0) return ar;
+          return daysOpen(b.created_at) - daysOpen(a.created_at);
+        });
+    } else {
+      list = list.sort((a, b) => {
+        if (a.status !== b.status) {
+          return a.status === "reported" ? -1 : 1;
+        }
+        return SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity];
+      });
+    }
+
+    return list;
+  }, [hazards, severityFilter, statusFilter, priorityView]);
+
+  const counts = {
+    immediate: processed.filter(
+      (h) => getActionLabel(h) === "Needs Immediate Action"
+    ).length,
+    scheduled: processed.filter(
+      (h) => getActionLabel(h) === "Schedule Repair"
+    ).length,
+    monitoring: processed.filter(
+      (h) => getActionLabel(h) === "Monitor"
+    ).length,
+  };
+
+  return (
+    <div>
+      <div style={{ display: "flex", gap: 12, marginBottom: 12 }}>
+        <button onClick={() => setPriorityView(true)}>
+          Priority View
+        </button>
+        <button onClick={() => setPriorityView(false)}>
+          All Reports
+        </button>
+        <div style={{ marginLeft: "auto", fontWeight: 700 }}>
+          Immediate: {counts.immediate} | Scheduled: {counts.scheduled} | Monitoring: {counts.monitoring}
+        </div>
+      </div>
+
+      <HazardReportTable
+        hazards={processed}
+        getActionLabel={getActionLabel}
+      />
+    </div>
+  );
+}
