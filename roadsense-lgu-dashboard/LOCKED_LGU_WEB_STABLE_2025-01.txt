@@ -1,0 +1,23 @@
+LGU WEB DASHBOARD — FINAL STABLE BASELINE
+
+Status:
+- Production deployed on Vercel
+- Dashboard renders (table + priority view)
+- Map renders with severity markers
+- Supabase RLS enforced (READ-ONLY)
+- No INSERT / UPDATE / DELETE via web
+- Mobile app is sole mutation surface
+
+Canonical URLs:
+- /
+- /dashboard
+- /dashboard/map
+
+Approved for:
+- LGU demos
+- Executive walkthroughs
+- Investor review
+- Policy validation
+
+Date: 2025-01
+State: LOCKED — DO NOT MODIFY WITHOUT EXPLICIT UNLOCK
