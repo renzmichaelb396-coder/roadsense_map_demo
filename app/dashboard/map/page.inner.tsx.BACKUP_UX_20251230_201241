@@ -1,0 +1,188 @@
+"use client";
+
+import "mapbox-gl/dist/mapbox-gl.css";
+import mapboxgl from "mapbox-gl";
+import { useEffect, useRef } from "react";
+
+type Severity = "HIGH" | "MEDIUM" | "LOW";
+type Status = "reported" | "resolved";
+
+type Hazard = {
+  id: string;
+  type: string;
+  severity: Severity;
+  status: Status;
+  latitude: number;
+  longitude: number;
+};
+
+const SEVERITY_COLOR: Record<Severity, string> = {
+  HIGH: "#dc2626",
+  MEDIUM: "#f59e0b",
+  LOW: "#16a34a",
+};
+
+function markerLetter(type: string) {
+  const t = (type || "").toLowerCase();
+  if (t === "crack") return "C";
+  if (t === "pothole") return "P";
+  if (t === "flood") return "F";
+  if (t === "construction") return "R";
+  if (t === "debris") return "D";
+  return "?";
+}
+
+export default function MapPageInner({ hazards }: { hazards: Hazard[] }) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const mapRef = useRef<mapboxgl.Map | null>(null);
+
+  const params =
+    typeof window !== "undefined"
+      ? new URLSearchParams(window.location.search)
+      : null;
+
+  const focusId = params?.get("focus") ?? null;
+  const focusedHazard = focusId
+    ? hazards.find((h) => h.id === focusId)
+    : null;
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+
+    const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
+    if (!token) return;
+
+    if (mapRef.current) {
+      mapRef.current.remove();
+      mapRef.current = null;
+    }
+
+    mapboxgl.accessToken = token;
+
+    const map = new mapboxgl.Map({
+      container: containerRef.current,
+      style: "mapbox://styles/mapbox/light-v11",
+      center: [120.9842, 14.5995],
+      zoom: 12,
+    });
+
+    mapRef.current = map;
+
+    map.on("load", () => {
+      hazards.forEach((h) => {
+        const isFocused = focusId === h.id;
+
+        const el = document.createElement("div");
+        el.innerText = markerLetter(h.type);
+
+        el.style.cssText = `
+          width:${isFocused ? 40 : 24}px;
+          height:${isFocused ? 40 : 24}px;
+          border-radius:999px;
+          background:${SEVERITY_COLOR[h.severity]};
+          color:#fff;
+          display:flex;
+          align-items:center;
+          justify-content:center;
+          font-weight:900;
+          font-size:${isFocused ? 15 : 11}px;
+          cursor:pointer;
+          box-shadow:${
+            isFocused
+              ? "0 0 0 8px rgba(255,255,255,0.85), 0 16px 32px rgba(0,0,0,0.6)"
+              : "0 6px 16px rgba(0,0,0,0.35)"
+          };
+          opacity:${focusId ? (isFocused ? 1 : 0.22) : 1};
+          filter:${focusId && !isFocused ? "grayscale(100%)" : "none"};
+          z-index:${isFocused ? 999 : 1};
+        `;
+
+        new mapboxgl.Marker(el)
+          .setLngLat([h.longitude, h.latitude])
+          .addTo(map);
+      });
+
+      if (focusedHazard) {
+        map.flyTo({
+          center: [focusedHazard.longitude, focusedHazard.latitude],
+          zoom: 18.8,
+          speed: 0.9,
+          curve: 1.5,
+          essential: true,
+        });
+      }
+    });
+
+    return () => {
+      map.remove();
+      mapRef.current = null;
+    };
+  }, [hazards, focusId]);
+
+  return (
+    <div style={{ position: "relative", height: "100vh", width: "100vw" }}>
+      <div ref={containerRef} style={{ position: "absolute", inset: 0 }} />
+
+      {/* LEGEND */}
+      <div
+        style={{
+          position: "absolute",
+          left: 14,
+          bottom: 74,
+          zIndex: 10,
+          background: "#020617",
+          padding: 12,
+          borderRadius: 10,
+          color: "#fff",
+          fontSize: 12,
+          boxShadow: "0 10px 24px rgba(0,0,0,0.45)",
+          minWidth: 150,
+        }}
+      >
+        <div style={{ fontWeight: 800 }}>Severity</div>
+        <div>🔴 HIGH</div>
+        <div>🟠 MEDIUM</div>
+        <div>🟢 LOW</div>
+
+        <div style={{ fontWeight: 800, marginTop: 10 }}>Marker</div>
+        <div>C = Crack</div>
+        <div>P = Pothole</div>
+        <div>F = Flood</div>
+        <div>R = Construction</div>
+        <div>D = Debris</div>
+      </div>
+
+      {/* FOCUSED HAZARD INFO PANEL */}
+      {focusedHazard && (
+        <div
+          style={{
+            position: "absolute",
+            right: 16,
+            bottom: 16,
+            zIndex: 20,
+            background: "#020617",
+            color: "#fff",
+            padding: 16,
+            borderRadius: 12,
+            minWidth: 220,
+            boxShadow: "0 20px 40px rgba(0,0,0,0.55)",
+            fontSize: 13,
+          }}
+        >
+          <div style={{ fontWeight: 800, marginBottom: 8 }}>
+            Focused Hazard
+          </div>
+
+          <div><b>Type:</b> {focusedHazard.type}</div>
+          <div><b>Severity:</b> {focusedHazard.severity}</div>
+          <div><b>Status:</b> {focusedHazard.status}</div>
+
+          <div style={{ marginTop: 6, opacity: 0.7 }}>
+            {focusedHazard.latitude.toFixed(6)},{" "}
+            {focusedHazard.longitude.toFixed(6)}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

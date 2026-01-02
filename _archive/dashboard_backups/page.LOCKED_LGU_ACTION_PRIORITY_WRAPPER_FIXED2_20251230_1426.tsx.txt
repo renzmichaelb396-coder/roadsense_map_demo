@@ -1,0 +1,15 @@
+import { Suspense } from "react";
+import MapPageInner from "./page.inner";
+import { supabase } from "../../../lib/supabaseClient";
+
+export default async function MapPage() {
+  const { data: hazards = [] } = await supabase
+    .from("hazards")
+    .select("id,type,severity,status,latitude,longitude,created_at");
+
+  return (
+    <Suspense fallback={<div style={{ padding: 24 }}>Loading map…</div>}>
+      <MapPageInner hazards={hazards} />
+    </Suspense>
+  );
+}

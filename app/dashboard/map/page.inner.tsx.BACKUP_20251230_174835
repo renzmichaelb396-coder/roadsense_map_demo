@@ -1,0 +1,108 @@
+"use client";
+
+import "mapbox-gl/dist/mapbox-gl.css";
+import mapboxgl from "mapbox-gl";
+import { useEffect, useRef } from "react";
+
+type Severity = "HIGH" | "MEDIUM" | "LOW";
+type Status = "reported" | "resolved";
+
+type Hazard = {
+  id: string;
+  type: string;
+  severity: Severity;
+  status: Status;
+  latitude: number;
+  longitude: number;
+};
+
+const SEVERITY_COLOR: Record<Severity, string> = {
+  HIGH: "#dc2626",
+  MEDIUM: "#f59e0b",
+  LOW: "#16a34a",
+};
+
+export default function MapPageInner({ hazards }: { hazards: Hazard[] }) {
+  const mapRef = useRef<mapboxgl.Map | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+
+    if (!process.env.NEXT_PUBLIC_MAPBOX_TOKEN) return;
+
+    mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
+
+    const map = new mapboxgl.Map({
+      container: containerRef.current,
+      style: "mapbox://styles/mapbox/light-v11",
+      center: [120.9842, 14.5995],
+      zoom: 12,
+    });
+
+    mapRef.current = map;
+
+    hazards.forEach((h) => {
+      const el = document.createElement("div");
+      el.style.width = "26px";
+      el.style.height = "26px";
+      el.style.borderRadius = "50%";
+      el.style.background = SEVERITY_COLOR[h.severity];
+      el.style.color = "#fff";
+      el.style.display = "flex";
+      el.style.alignItems = "center";
+      el.style.justifyContent = "center";
+      el.style.fontWeight = "900";
+      el.style.fontSize = "12px";
+      el.innerText = h.type.charAt(0).toUpperCase();
+
+      new mapboxgl.Marker(el)
+        .setLngLat([h.longitude, h.latitude])
+        .addTo(map);
+    });
+
+    const params = new URLSearchParams(window.location.search);
+    const focusId = params.get("focus");
+
+    if (focusId) {
+      const target = hazards.find((h) => h.id === focusId);
+      if (target) {
+        map.flyTo({
+          center: [target.longitude, target.latitude],
+          zoom: 17,
+        });
+      }
+    }
+
+    return () => map.remove();
+  }, [hazards]);
+
+  return (
+    <>
+      <div ref={containerRef} style={{ height: "100%", width: "100%" }} />
+
+      <div
+        style={{
+          position: "absolute",
+          bottom: 80,
+          left: 20,
+          background: "#020617",
+          padding: 12,
+          borderRadius: 8,
+          color: "#fff",
+          fontSize: 12,
+        }}
+      >
+        <div><b>Severity</b></div>
+        <div style={{ marginTop: 6 }}>🔴 HIGH</div>
+        <div>🟠 MEDIUM</div>
+        <div>🟢 LOW</div>
+
+        <div style={{ marginTop: 10 }}><b>Marker</b></div>
+        <div>C = Crack</div>
+        <div>P = Pothole</div>
+        <div>F = Flood</div>
+      </div>
+    </>
+  );
+}

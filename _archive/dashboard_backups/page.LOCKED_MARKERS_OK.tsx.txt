@@ -1,0 +1,152 @@
+"use client";
+
+import "mapbox-gl/dist/mapbox-gl.css";
+
+import { useEffect, useRef } from "react";
+import mapboxgl from "mapbox-gl";
+import { supabase } from "@/lib/supabase";
+
+mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN!;
+
+type Severity = "HIGH" | "MEDIUM" | "LOW";
+type Status = "reported" | "resolved" | "ACTIVE";
+
+const SEVERITY_COLOR: Record<Severity, string> = {
+  HIGH: "#dc2626",
+  MEDIUM: "#f59e0b",
+  LOW: "#16a34a",
+};
+
+function hazardLetter(type: string | null) {
+  const t = (type || "").toLowerCase();
+  if (t === "pothole") return "P";
+  if (t === "crack") return "C";
+  if (t === "construction") return "R";
+  if (t === "flood") return "F";
+  if (t === "debris") return "D";
+  return "?";
+}
+
+/**
+ * VISUAL ONLY — LOGIC UNTOUCHED
+ * Ensures far-zoom visibility
+ */
+function createLGUMarker(h: {
+  type: string | null;
+  severity: Severity;
+  status: Status;
+}) {
+  const el = document.createElement("div");
+
+  el.style.cssText = `
+    width:40px;
+    height:40px;
+    border-radius:999px;
+    background:${SEVERITY_COLOR[h.severity]};
+    color:#ffffff;
+    font-weight:900;
+    font-size:18px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    border:3px solid #ffffff;
+    box-shadow:
+      0 0 0 2px rgba(0,0,0,0.55),
+      0 6px 14px rgba(0,0,0,0.45);
+    opacity:${h.status === "resolved" ? 0.45 : 1};
+    cursor:pointer;
+    user-select:none;
+  `;
+
+  el.textContent = hazardLetter(h.type);
+  return el;
+}
+
+export default function DashboardMap() {
+  const mapRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const map = new mapboxgl.Map({
+      container: mapRef.current!,
+      style: "mapbox://styles/mapbox/streets-v11",
+      center: [120.9842, 14.5995],
+      zoom: 11,
+    });
+
+    supabase
+      .from("hazards")
+      .select("type,severity,status,latitude,longitude,created_at")
+      .then(({ data }) => {
+        if (!data) return;
+
+        data.forEach(h => {
+          if (!h.latitude || !h.longitude) return;
+
+          const marker = new mapboxgl.Marker({
+            element: createLGUMarker(h),
+          }).setLngLat([h.longitude, h.latitude]);
+
+          const popup = new mapboxgl.Popup({ offset: 16 }).setHTML(`
+            <div style="background:#0b0b0b;color:#fff;padding:14px 16px;border-radius:12px;min-width:220px">
+              <div style="font-weight:900;font-size:14px;letter-spacing:.3px">
+                ${(h.type || "UNKNOWN").toUpperCase()}
+              </div>
+
+              <div style="
+                margin-top:6px;
+                display:inline-block;
+                background:${SEVERITY_COLOR[h.severity]};
+                color:white;
+                padding:4px 10px;
+                border-radius:999px;
+                font-size:12px;
+                font-weight:800
+              ">
+                ${h.severity}
+              </div>
+
+              <div style="margin-top:8px;font-size:13px">
+                Status: <b>${String(h.status).toUpperCase()}</b>
+              </div>
+
+              <div style="opacity:.55;font-size:12px;margin-top:6px">
+                ${new Date(h.created_at).toLocaleString()}
+              </div>
+            </div>
+          `);
+
+          marker.getElement().addEventListener("click", () => {
+            popup.setLngLat([h.longitude, h.latitude]).addTo(map);
+          });
+
+          marker.addTo(map);
+        });
+      });
+
+    return () => map.remove();
+  }, []);
+
+  return (
+    <div style={{ width: "100%", height: "100vh" }}>
+      <a
+        href="/dashboard"
+        style={{
+          position: "absolute",
+          zIndex: 10,
+          top: 16,
+          left: 16,
+          background: "#111",
+          color: "white",
+          padding: "8px 12px",
+          borderRadius: 8,
+          fontWeight: 800,
+          textDecoration: "none",
+        }}
+      >
+        ← Back to Dashboard
+      </a>
+
+      <div ref={mapRef} style={{ width: "100%", height: "100%" }} />
+    </div>
+  );
+}

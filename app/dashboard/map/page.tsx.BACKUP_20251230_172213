@@ -1,0 +1,22 @@
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
+import { Suspense } from "react";
+import MapPageInner from "./page.inner";
+import { supabase } from "@/lib/supabase";
+
+export default async function MapPage() {
+  const res = await supabase
+    .from("hazards")
+    .select("id,type,severity,status,latitude,longitude,created_at");
+
+  const focusId = new URLSearchParams(window.location.search).get("focus");
+
+const hazards = res.data ?? [];
+
+  return (
+    <Suspense fallback={<div style={{ padding: 24 }}>Loading map…</div>}>
+      <MapPageInner hazards={hazards} />
+    </Suspense>
+  );
+}

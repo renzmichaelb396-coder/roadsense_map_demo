@@ -1,0 +1,10 @@
+LGU DASHBOARD — RLS AUDIT
+
+- hazards table is READ-ONLY for anon/public
+- No UPDATE / INSERT / DELETE via web
+- Mobile app is sole mutation surface
+- is_deleted enforced at RLS level
+- Legacy policies removed
+
+Date: 2025-01
+Status: LOCKED

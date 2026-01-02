@@ -1,0 +1,11 @@
+LGU DASHBOARD — KEY VERIFICATION
+
+- .env.local NOT tracked by git
+- Secrets provided only via Vercel env
+- Supabase anon key rotated
+- Mapbox token rotated + restricted
+- No hardcoded secrets in repo
+- NEXT_PUBLIC usage intentional and safe
+
+Date: 2025-01
+Status: LOCKED

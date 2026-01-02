@@ -1,0 +1,104 @@
+"use client";
+
+import mapboxgl from "mapbox-gl";
+import { useEffect, useRef } from "react";
+
+type Severity = "HIGH" | "MEDIUM" | "LOW";
+type Status = "reported" | "resolved";
+
+type Hazard = {
+  id: string;
+  type: string;
+  severity: Severity;
+  status: Status;
+  latitude: number;
+  longitude: number;
+  created_at: string;
+};
+
+const SEVERITY_COLOR: Record<Severity, string> = {
+  HIGH: "#dc2626",
+  MEDIUM: "#f59e0b",
+  LOW: "#16a34a",
+};
+
+function getActionLabel(h: Hazard) {
+  if (h.status === "resolved") return "Resolved";
+  if (h.severity === "HIGH") return "Needs Immediate Action";
+  if (h.severity === "MEDIUM") return "Schedule Repair";
+  return "Monitor";
+}
+
+export default function MapPageInner({ hazards }: { hazards: Hazard[] }) {
+  const mapRef = useRef<mapboxgl.Map | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+
+    if (!process.env.NEXT_PUBLIC_MAPBOX_TOKEN) {
+      throw new Error("Mapbox token missing");
+    }
+
+    mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
+
+    const map = new mapboxgl.Map({
+      container: containerRef.current,
+      style: "mapbox://styles/mapbox/light-v11",
+      center: [121.0, 14.6],
+      zoom: 11,
+    });
+
+    mapRef.current = map;
+
+    hazards.forEach((h) => {
+      const el = document.createElement("div");
+      el.style.background = SEVERITY_COLOR[h.severity];
+      el.style.opacity = h.status === "resolved" ? "0.45" : "1";
+      el.style.borderRadius = "999px";
+      el.style.padding = "6px 10px";
+      el.style.color = "#fff";
+      el.style.fontWeight = "800";
+
+      const popup = new mapboxgl.Popup({ offset: 12 }).setHTML(`
+        <div style="font-size:13px">
+          <b>${h.type}</b><br/>
+          Severity: ${h.severity}<br/>
+          Status: ${h.status.toUpperCase()}<br/>
+          Action Required: <b>${getActionLabel(h)}</b>
+        </div>
+      `);
+
+      new mapboxgl.Marker(el)
+        .setLngLat([h.longitude, h.latitude])
+        .setPopup(popup)
+        .addTo(map);
+    });
+
+    return () => map.remove();
+  }, [hazards]);
+
+  const showEmpty = Boolean(process.env.NEXT_PUBLIC_MAPBOX_TOKEN) && hazards.length === 0;
+
+  return (
+    <div style={{ position: "relative", height: "100vh", width: "100%" }}>
+      <div ref={containerRef} style={{ height: "100%", width: "100%" }} />
+      {showEmpty && (
+        <div
+          style={{
+            position: "absolute",
+            top: 12,
+            left: 12,
+            background: "rgba(0,0,0,0.75)",
+            color: "#fff",
+            padding: "10px 12px",
+            borderRadius: 8,
+            fontSize: 13,
+          }}
+        >
+          No hazards to display.
+        </div>
+      )}
+    </div>
+  );
+}

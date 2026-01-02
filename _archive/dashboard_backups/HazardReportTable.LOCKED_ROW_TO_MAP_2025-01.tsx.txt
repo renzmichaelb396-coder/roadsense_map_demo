@@ -1,0 +1,62 @@
+"use client";
+
+import { useRouter } from "next/navigation";
+
+type Hazard = {
+  id: string;
+  type: string | null;
+  severity: "HIGH" | "MEDIUM" | "LOW";
+  status: "reported" | "resolved";
+  created_at: string;
+  city?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+};
+
+export default function HazardReportTable({ hazards }: { hazards: Hazard[] }) {
+  const router = useRouter();
+
+  return (
+    <div style={{ marginTop: 32 }}>
+      <h2 style={{ fontWeight: 800, marginBottom: 12 }}>Hazard Reports</h2>
+
+      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <thead>
+          <tr style={{ background: "#111", color: "#fff" }}>
+            <th>Severity</th>
+            <th>Type</th>
+            <th>Status</th>
+            <th>Reported</th>
+            <th>Lat</th>
+            <th>Lng</th>
+          </tr>
+        </thead>
+        <tbody>
+          {hazards.map(h => (
+            <tr
+              key={h.id}
+              onClick={() => router.push(`/dashboard/map?hazard=${h.id}`)}
+              style={{
+                cursor: "pointer",
+                borderBottom: "1px solid #333",
+                background:
+                  h.severity === "HIGH"
+                    ? "#dc262633"
+                    : h.severity === "MEDIUM"
+                    ? "#f59e0b33"
+                    : "#16a34a33",
+              }}
+            >
+              <td>{h.severity}</td>
+              <td>{h.type}</td>
+              <td>{h.status === "reported" ? "ACTIVE" : "RESOLVED"}</td>
+              <td>{new Date(h.created_at).toLocaleString()}</td>
+              <td>{h.latitude}</td>
+              <td>{h.longitude}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}

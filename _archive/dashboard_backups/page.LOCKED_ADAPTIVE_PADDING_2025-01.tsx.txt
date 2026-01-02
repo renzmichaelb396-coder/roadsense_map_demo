@@ -1,0 +1,287 @@
+"use client";
+
+import "mapbox-gl/dist/mapbox-gl.css";
+
+import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import mapboxgl from "mapbox-gl";
+import { supabase } from "@/lib/supabase";
+import HazardReportTable from "@/app/dashboard/components/HazardReportTable";
+
+mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN!;
+
+type Severity = "HIGH" | "MEDIUM" | "LOW";
+type Status = "reported" | "resolved" | "ACTIVE";
+
+type Hazard = {
+  id?: string;
+  type: string | null;
+  severity: Severity;
+  status: Status;
+  latitude: number;
+  longitude: number;
+  created_at: string;
+};
+
+const SEVERITY_COLOR: Record<Severity, string> = {
+  HIGH: "#dc2626",
+  MEDIUM: "#f59e0b",
+  LOW: "#16a34a",
+};
+
+function hazardLetter(type: string | null) {
+  const t = (type || "").toLowerCase();
+  if (t === "pothole") return "P";
+  if (t === "crack") return "C";
+  if (t === "construction") return "R";
+  if (t === "flood") return "F";
+  if (t === "debris") return "D";
+  return "?";
+}
+
+function createLGUMarker(h: Hazard) {
+  const el = document.createElement("div");
+
+  el.style.cssText = `
+    width:40px;
+    height:40px;
+    border-radius:999px;
+    background:${SEVERITY_COLOR[h.severity]};
+    color:#ffffff;
+    font-weight:900;
+    font-size:18px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    border:3px solid #ffffff;
+    box-shadow:
+      0 0 0 2px rgba(0,0,0,0.55),
+      0 6px 14px rgba(0,0,0,0.45);
+    opacity:${h.status === "resolved" ? 0.45 : 1};
+    cursor:pointer;
+    user-select:none;
+  `;
+
+  el.textContent = hazardLetter(h.type);
+  return el;
+}
+
+function exportToCSV(rows: Hazard[]) {
+  const headers = [
+    "type",
+    "severity",
+    "status",
+    "latitude",
+    "longitude",
+    "created_at",
+  ];
+
+  const csvContent = [
+    headers.join(","),
+    ...rows.map(r =>
+      [
+        r.type ?? "",
+        r.severity,
+        r.status,
+        r.latitude,
+        r.longitude,
+        r.created_at,
+      ].join(",")
+    ),
+  ].join("\n");
+
+  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `roadsense_hazards_${new Date().toISOString().slice(0,10)}.csv`;
+  link.click();
+
+  URL.revokeObjectURL(url);
+}
+
+export default function DashboardMap() {
+
+  function getFitPadding() {
+    const w = window.innerWidth;
+    return {
+      top: 90,
+      bottom: 70,
+      left: w >= 1024 ? 260 : 120,
+      right: w >= 1024 ? 260 : 120,
+    };
+  }
+
+  const mapRef = useRef<HTMLDivElement | null>(null);
+  const [hazards, setHazards] = useState<Hazard[]>([]);
+  const boundsRef = useRef<mapboxgl.LngLatBounds | null>(null);
+
+  const searchParams = useSearchParams();
+  const focusedHazardId = searchParams.get("hazard");
+
+  useEffect(() => {
+    const map = new mapboxgl.Map({
+      container: mapRef.current!,
+      style: "mapbox://styles/mapbox/streets-v11",
+      center: [120.9842, 14.5995],
+      zoom: 11,
+    });
+
+    supabase
+      .from("hazards")
+      .select("id,type,severity,status,latitude,longitude,created_at")
+      .then(({ data }) => {
+        if (!data) return;
+        setHazards(data as Hazard[]);
+
+        boundsRef.current = new mapboxgl.LngLatBounds();
+
+        data.forEach(h => {
+          if (!h.latitude || !h.longitude) return;
+
+          const marker = new mapboxgl.Marker({
+            element: createLGUMarker(h),
+          }).setLngLat([h.longitude, h.latitude]);
+
+          marker.setPopup(
+            new mapboxgl.Popup({ offset: 16 }).setHTML(`
+              <div style="background:#0b0b0b;color:#fff;padding:14px;border-radius:12px">
+                <b>${(h.type || "UNKNOWN").toUpperCase()}</b><br/>
+                <span style="color:${SEVERITY_COLOR[h.severity]}">${h.severity}</span><br/>
+                ${new Date(h.created_at).toLocaleString()}
+              </div>
+            `)
+          );
+
+          marker.addTo(map);
+
+          if (focusedHazardId && h.id === focusedHazardId) {
+            map.flyTo({
+              center: [h.longitude, h.latitude],
+              zoom: 15,
+              essential: true,
+            });
+
+            marker.togglePopup();
+          }
+
+
+          if (!focusedHazardId && boundsRef.current) {
+            boundsRef.current.extend([h.longitude, h.latitude]);
+          }
+        });
+
+        if (!focusedHazardId && boundsRef.current && !boundsRef.current.isEmpty()) {
+          map.fitBounds(boundsRef.current, {
+            padding: getFitPadding(),
+            padding: 80,
+            maxZoom: 14,
+            duration: 800,
+          });
+        }
+
+      });
+
+    return () => map.remove();
+  }, []);
+
+  return (
+    <>
+      {/* PRINT RULES */}
+      <style>{`
+        @media print {
+          .no-print { display:none !important; }
+        }
+      `}</style>
+
+      {/* ACTION BAR — ALWAYS VISIBLE */}
+      <div
+        className="no-print"
+        style={{
+          position: "absolute",
+          top: 16,
+          left: 16,
+          zIndex: 10,
+          display: "flex",
+          gap: 8,
+        }}
+      >
+        <a
+          href="/dashboard"
+          style={{
+            background: "#111",
+            color: "#fff",
+            padding: "8px 12px",
+            borderRadius: 8,
+            fontWeight: 800,
+            textDecoration: "none",
+          }}
+        >
+          ← Back
+        </a>
+
+        <button
+          onClick={() => exportToCSV(hazards)}
+          style={{
+            background: "#1f2937",
+            color: "#fff",
+            padding: "8px 12px",
+            borderRadius: 8,
+            fontWeight: 800,
+            border: "none",
+            cursor: "pointer",
+          }}
+        >
+          ⬇ Export CSV
+        </button>
+
+        <button
+          onClick={() => window.print()}
+          style={{
+            background: "#2563eb",
+            color: "#fff",
+            padding: "8px 12px",
+            borderRadius: 8,
+            fontWeight: 800,
+            border: "none",
+            cursor: "pointer",
+          }}
+        >
+          🖨 Print / Save PDF
+        </button>
+      </div>
+
+      {/* LEGEND — ALWAYS VISIBLE */}
+      <div
+        className="no-print"
+        style={{
+          position: "absolute",
+          top: 16,
+          right: 16,
+          zIndex: 10,
+          background: "#0b0b0b",
+          color: "#fff",
+          padding: 14,
+          borderRadius: 12,
+          fontSize: 13,
+          minWidth: 180,
+        }}
+      >
+        <b>Hazard Legend</b>
+        <div>P – Pothole</div>
+        <div>C – Crack</div>
+        <div>R – Construction</div>
+        <div>F – Flood</div>
+        <div>D – Debris</div>
+        <div style={{ marginTop: 8 }}>
+          <div style={{ color: "#dc2626" }}>● HIGH</div>
+          <div style={{ color: "#f59e0b" }}>● MEDIUM</div>
+          <div style={{ color: "#16a34a" }}>● LOW</div>
+        </div>
+      </div>
+
+      <div ref={mapRef} style={{ width: "100%", height: "100vh" }} />
+    </>
+  );
+}

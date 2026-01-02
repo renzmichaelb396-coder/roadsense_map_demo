@@ -1,0 +1,135 @@
+"use client";
+
+import { useMemo, useState, useEffect } from "react";
+import HazardReportTable from "./components/HazardReportTable";
+
+type Severity = "HIGH" | "MEDIUM" | "LOW";
+type RawStatus = "reported" | "resolved";
+type StatusNorm = "ACTIVE" | "RESOLVED";
+
+type Hazard = {
+  id: string;
+  type: string;
+  severity: Severity;
+  status: RawStatus;
+  latitude: number;
+  longitude: number;
+  created_at: string | null;
+};
+
+function safeParseDate(value?: string | null): number | null {
+  if (!value) return null;
+  const ts = Date.parse(value);
+  return Number.isFinite(ts) ? ts : null;
+}
+
+export default function DashboardInner({ hazards }: { hazards: Hazard[] }) {
+  const [priorityView, setPriorityView] = useState(true);
+
+  const normalized = useMemo(() => {
+    return hazards.map((h) => {
+      const createdTs = safeParseDate(h.created_at);
+      const ageDays =
+        createdTs !== null
+          ? Math.floor((Date.now() - createdTs) / (1000 * 60 * 60 * 24))
+          : null;
+
+      return {
+        ...h,
+        statusNorm: h.status === "reported" ? "ACTIVE" : "RESOLVED",
+        ageDays,
+      };
+    });
+  }, [hazards]);
+
+  function getActionLabel(h: Hazard) {
+    if (h.status === "resolved") return "Resolved";
+    if (h.severity === "HIGH") return "Needs Immediate Action";
+    if (h.severity === "MEDIUM") return "Schedule Repair";
+    return "Monitor";
+  }
+
+  const processed = useMemo(() => {
+    let list = [...normalized];
+    if (priorityView) {
+      list.sort((a, b) => {
+        if (a.statusNorm !== b.statusNorm) {
+          return a.statusNorm === "ACTIVE" ? -1 : 1;
+        }
+        const rank = { HIGH: 1, MEDIUM: 2, LOW: 3 };
+        return rank[a.severity] - rank[b.severity];
+      });
+    }
+    return list;
+  }, [normalized, priorityView]);
+
+  return (
+    <div style={{ padding: 16 }}>
+      {processed.length === 0 && (
+        <div
+          style={{
+            background: "#0b1220",
+            border: "1px dashed #334155",
+            color: "#e5e7eb",
+            padding: 16,
+            borderRadius: 10,
+            marginBottom: 12,
+            fontSize: 14,
+          }}
+        >
+          No hazard reports available.<br />
+          This dashboard shows live, read-only data from field reports.
+        </div>
+      )}
+
+      {/* READ-ONLY BANNER */}
+      <div
+        style={{
+          background: "#111827",
+          color: "#f9fafb",
+          padding: "10px 14px",
+          borderRadius: 8,
+          fontWeight: 700,
+          marginBottom: 12,
+          fontSize: 14,
+        }}
+      >
+        🏛️ LGU READ-ONLY DASHBOARD — Field reporting & resolution are mobile-only
+      </div>
+
+      <div style={{ display: "flex", gap: 12, marginBottom: 10 }}>
+        <button
+          onClick={() => setPriorityView(true)}
+          style={{ fontWeight: priorityView ? 800 : 400 }}
+        >
+          Priority View
+        </button>
+        <button
+          onClick={() => setPriorityView(false)}
+          style={{ fontWeight: !priorityView ? 800 : 400 }}
+        >
+          All Reports
+        </button>
+      </div>
+
+      <HazardReportTable
+        hazards={processed}
+        getActionLabel={getActionLabel}
+        onRowClick={(h) => {
+          window.location.href = `/dashboard/map?focus=`;
+        }}
+      />
+
+      {/* AUDIT FOOTER */}
+      <div
+        style={{
+          marginTop: 16,
+          fontSize: 12,
+          opacity: 0.6,
+        }}
+      >
+        Data is live, read-only, and sourced from verified field reports.
+      </div>
+    </div>
+  );
+}

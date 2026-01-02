@@ -1,0 +1,185 @@
+"use client";
+
+import "mapbox-gl/dist/mapbox-gl.css";
+import mapboxgl from "mapbox-gl";
+import { useEffect, useRef } from "react";
+
+type Severity = "HIGH" | "MEDIUM" | "LOW";
+type Status = "reported" | "resolved";
+
+type Hazard = {
+  id: string;
+  type: string;
+  severity: Severity;
+  status: Status;
+  latitude: number;
+  longitude: number;
+};
+
+const SEVERITY_COLOR: Record<Severity, string> = {
+  HIGH: "#dc2626",
+  MEDIUM: "#f59e0b",
+  LOW: "#16a34a",
+};
+
+function markerLetter(type: string) {
+  const t = (type || "").toLowerCase();
+  if (t === "crack") return "C";
+  if (t === "pothole") return "P";
+  if (t === "flood") return "F";
+  if (t === "construction") return "R";
+  if (t === "debris") return "D";
+  return "?";
+}
+
+export default function MapPageInner({ hazards }: { hazards: Hazard[] }) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const mapRef = useRef<mapboxgl.Map | null>(null);
+  const markersRef = useRef<
+    { id: string; marker: mapboxgl.Marker; popup: mapboxgl.Popup }[]
+  >([]);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+
+    const params = new URLSearchParams(window.location.search);
+    const focusId = params.get("focus");
+
+    const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
+    if (!token) return;
+
+    if (mapRef.current) {
+      mapRef.current.remove();
+      mapRef.current = null;
+    }
+
+    markersRef.current = [];
+    mapboxgl.accessToken = token;
+
+    const map = new mapboxgl.Map({
+      container: containerRef.current,
+      style: "mapbox://styles/mapbox/light-v11",
+      center: [120.9842, 14.5995],
+      zoom: 12,
+    });
+
+    mapRef.current = map;
+
+    map.on("load", () => {
+      hazards.forEach((h) => {
+        const el = document.createElement("div");
+
+        el.style.width = "24px";
+        el.style.height = "24px";
+        el.style.borderRadius = "50%";
+        el.style.background = SEVERITY_COLOR[h.severity];
+        el.style.color = "#fff";
+        el.style.display = "flex";
+        el.style.alignItems = "center";
+        el.style.justifyContent = "center";
+        el.style.fontWeight = "900";
+        el.style.fontSize = "11px";
+        el.style.boxShadow = "0 6px 16px rgba(0,0,0,0.35)";
+        el.style.cursor = "pointer";
+        el.innerText = markerLetter(h.type);
+
+        const popupHtml =
+          '<div style="font-weight:800;margin-bottom:4px;">' +
+          markerLetter(h.type) +
+          " — " +
+          h.type.toUpperCase() +
+          "</div>" +
+          "<div>Severity: <b>" +
+          h.severity +
+          "</b></div>" +
+          "<div>Status: " +
+          h.status +
+          "</div>";
+
+        const popup = new mapboxgl.Popup({
+          closeButton: false,
+          closeOnClick: false,
+          offset: 18,
+        }).setHTML(popupHtml);
+
+        const marker = new mapboxgl.Marker(el)
+          .setLngLat([h.longitude, h.latitude])
+          .setPopup(popup)
+          .addTo(map);
+
+        markersRef.current.push({ id: h.id, marker, popup });
+      });
+
+      if (focusId) {
+        const target = hazards.find((h) => h.id === focusId);
+        if (target) {
+          map.flyTo({
+            center: [target.longitude, target.latitude],
+            zoom: 18.8,
+            speed: 0.9,
+            curve: 1.5,
+            essential: true,
+          });
+
+          markersRef.current.forEach(({ id, marker, popup }) => {
+            const el = marker.getElement();
+
+            if (id === focusId) {
+              el.style.width = "40px";
+              el.style.height = "40px";
+              el.style.fontSize = "15px";
+              el.style.zIndex = "999";
+              el.style.opacity = "1";
+              el.style.boxShadow =
+                "0 0 0 8px rgba(255,255,255,0.85), 0 16px 32px rgba(0,0,0,0.6)";
+              el.style.filter = "none";
+              popup.addTo(map);
+            } else {
+              el.style.opacity = "0.22";
+              el.style.filter = "grayscale(100%)";
+            }
+          });
+        }
+      }
+    });
+
+    return () => {
+      map.remove();
+      mapRef.current = null;
+    };
+  }, [hazards]);
+
+  return (
+    <div style={{ position: "relative", height: "100vh", width: "100vw" }}>
+      <div ref={containerRef} style={{ position: "absolute", inset: 0 }} />
+
+      <div
+        style={{
+          position: "absolute",
+          left: 14,
+          bottom: 74,
+          zIndex: 10,
+          background: "#020617",
+          padding: 12,
+          borderRadius: 10,
+          color: "#fff",
+          fontSize: 12,
+          boxShadow: "0 10px 24px rgba(0,0,0,0.45)",
+          minWidth: 150,
+        }}
+      >
+        <div style={{ fontWeight: 800 }}>Severity</div>
+        <div>🔴 HIGH</div>
+        <div>🟠 MEDIUM</div>
+        <div>�� LOW</div>
+
+        <div style={{ fontWeight: 800, marginTop: 10 }}>Marker</div>
+        <div>C = Crack</div>
+        <div>P = Pothole</div>
+        <div>F = Flood</div>
+        <div>R = Construction</div>
+        <div>D = Debris</div>
+      </div>
+    </div>
+  );
+}

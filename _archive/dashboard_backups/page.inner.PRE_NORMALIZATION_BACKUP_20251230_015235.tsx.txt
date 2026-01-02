@@ -1,0 +1,173 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { supabase } from "@/lib/supabase";
+import HazardReportTable from "./components/HazardReportTable";
+
+type Severity = "HIGH" | "MEDIUM" | "LOW";
+type StatusNorm = "reported" | "resolved";
+
+type Hazard = {
+  id: string;
+  type: string | null;
+  severity: Severity;
+  status: StatusNorm;
+  created_at: string;
+  city?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+};
+
+const SEVERITY_RANK: Record<Severity, number> = {
+  HIGH: 0,
+  MEDIUM: 1,
+  LOW: 2,
+};
+
+// 🔒 DEFENSIVE NORMALIZATION (LOCKED)
+function normalizeSeverity(raw: any): Severity {
+  const s = String(raw ?? "");
+  const parts = s.split("_");
+  const v = parts[parts.length - 1]?.toUpperCase();
+  if (v === "HIGH" || v === "MEDIUM" || v === "LOW") return v;
+  return "LOW";
+}
+
+function normalizeStatus(raw: any): StatusNorm {
+  const s = String(raw ?? "").toLowerCase();
+  if (s.startsWith("resolved")) return "resolved";
+  return "reported";
+}
+
+export default function DashboardInner() {
+  const [hazards, setHazards] = useState<Hazard[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const [severityFilter, setSeverityFilter] =
+    useState<Severity | "ALL">("ALL");
+  const [statusFilter, setStatusFilter] =
+    useState<"ALL" | "ACTIVE" | "RESOLVED">("ALL");
+
+  useEffect(() => {
+    supabase
+      .from("hazards")
+      .select("id,type,severity,status,created_at,city,latitude,longitude")
+      .then(({ data }) => {
+        const normalized =
+          (data || []).map((h: any) => ({
+            id: String(h.id),
+            type: h.type ?? null,
+            severity: normalizeSeverity(h.severity),
+            status: normalizeStatus(h.status),
+            created_at: String(h.created_at),
+            city: h.city ?? null,
+            latitude: h.latitude ?? null,
+            longitude: h.longitude ?? null,
+          }));
+
+        setHazards(normalized);
+        setLoading(false);
+      });
+  }, []);
+
+  const filteredHazards = useMemo(() => {
+    return hazards
+      .filter(h => {
+        const severityOk =
+          severityFilter === "ALL" || h.severity === severityFilter;
+
+        const statusOk =
+          statusFilter === "ALL" ||
+          (statusFilter === "ACTIVE" && h.status === "reported") ||
+          (statusFilter === "RESOLVED" && h.status === "resolved");
+
+        return severityOk && statusOk;
+      })
+      .sort((a, b) => {
+        if (a.status !== b.status) {
+          return a.status === "reported" ? -1 : 1;
+        }
+        if (a.severity !== b.severity) {
+          return SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity];
+        }
+        return (
+          new Date(b.created_at).getTime() -
+          new Date(a.created_at).getTime()
+        );
+      });
+  }, [hazards, severityFilter, statusFilter]);
+
+  const count = (sev: Severity) =>
+    hazards.filter(h => h.severity === sev && h.status === "reported").length;
+
+  const active = hazards.filter(h => h.status === "reported").length;
+  const resolved = hazards.filter(h => h.status === "resolved").length;
+
+  return (
+    <main style={{ padding: 24 }}>
+      <h1 style={{ fontSize: 28, fontWeight: 900 }}>LGU Hazard Ops</h1>
+
+      <div style={{ display: "flex", gap: 16, margin: "16px 0" }}>
+        <Stat label="HIGH" value={count("HIGH")} color="#dc2626" />
+        <Stat label="MED" value={count("MEDIUM")} color="#f59e0b" />
+        <Stat label="LOW" value={count("LOW")} color="#16a34a" />
+      </div>
+
+      <div style={{ marginBottom: 16 }}>
+        Active: {active} • Resolved: {resolved}
+      </div>
+
+      <Link
+        href="/dashboard/map"
+        style={{
+          background: "#2563eb",
+          color: "#fff",
+          padding: "10px 16px",
+          borderRadius: 8,
+          fontWeight: 800,
+          textDecoration: "none",
+        }}
+      >
+        View Map →
+      </Link>
+
+      <div style={{ marginTop: 24 }}>
+        {loading ? (
+          <div>Loading…</div>
+        ) : (
+          <HazardReportTable
+            hazards={filteredHazards}
+            onRowClick={id =>
+              (window.location.href = `/dashboard/map?hazard=${id}`)
+            }
+          />
+        )}
+      </div>
+    </main>
+  );
+}
+
+function Stat({
+  label,
+  value,
+  color,
+}: {
+  label: string;
+  value: number;
+  color: string;
+}) {
+  return (
+    <div
+      style={{
+        border: `2px solid ${color}`,
+        padding: 16,
+        borderRadius: 12,
+        minWidth: 120,
+      }}
+    >
+      <div style={{ fontWeight: 900 }}>{label}</div>
+      <div style={{ fontSize: 28, fontWeight: 900 }}>{value}</div>
+    </div>
+  );
+}

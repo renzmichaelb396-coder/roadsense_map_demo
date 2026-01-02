@@ -1,0 +1,126 @@
+"use client";
+
+import type { Hazard } from "@/app/lib/types";
+
+import "mapbox-gl/dist/mapbox-gl.css";
+
+import { useEffect, useRef, useState } from "react";
+import mapboxgl from "mapbox-gl";
+import { supabase } from "@/lib/supabase";
+import HazardReportTable from "@/app/dashboard/components/HazardReportTable";
+
+mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN!;
+
+type Severity = "HIGH" | "MEDIUM" | "LOW";
+type Status = "reported" | "resolved" | "ACTIVE";
+
+
+const SEVERITY_COLOR: Record<Severity, string> = {
+  HIGH: "#dc2626",
+  MEDIUM: "#f59e0b",
+  LOW: "#16a34a",
+};
+
+function hazardLetter(type: string | null) {
+  const t = (type || "").toLowerCase();
+  if (t === "pothole") return "P";
+  if (t === "crack") return "C";
+  if (t === "construction") return "R";
+  if (t === "flood") return "F";
+  if (t === "debris") return "D";
+  return "?";
+}
+
+function createLGUMarker(h: Hazard) {
+  const el = document.createElement("div");
+  el.className = "lgu-marker";
+  el.style.setProperty("--sev", SEVERITY_COLOR[h.severity]);
+
+  el.innerHTML = `
+    <span class="marker-core">${hazardLetter(h.type)}</span>
+    <span class="marker-pulse"></span>
+  `;
+
+  return el;
+}
+
+function exportToCSV(rows: Hazard[]) {
+  const headers = ["type", "severity", "status", "latitude", "longitude", "created_at"];
+  const csv = [
+    headers.join(","),
+    ...rows.map(r =>
+      [r.type ?? "", r.severity, r.status, r.latitude, r.longitude, r.created_at].join(",")
+    ),
+  ].join("\n");
+
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `roadsense_hazards_${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+
+  URL.revokeObjectURL(url);
+}
+
+export default function DashboardMap() {
+  const mapContainerRef = useRef<HTMLDivElement | null>(null);
+  const markersRef = useRef<mapboxgl.Marker[]>([]);
+  const [hazards, setHazards] = useState<Hazard[]>([]);
+
+  useEffect(() => {
+    const map = new mapboxgl.Map({
+      container: mapContainerRef.current!,
+      style: "mapbox://styles/mapbox/streets-v11",
+      center: [120.9842, 14.5995],
+      zoom: 11,
+    });
+
+    supabase
+      .from("hazards")
+      .select("id,type,severity,status,latitude,longitude,created_at")
+      .then(({ data }) => {
+        if (!data) return;
+        setHazards(data as Hazard[]);
+
+        data.forEach(h => {
+          if (!h.latitude || !h.longitude) return;
+
+          const marker = new mapboxgl.Marker({
+              element: createLGUMarker(h),
+              anchor: "center",
+            })
+            .setLngLat([h.longitude, h.latitude])
+            .addTo(map);
+
+          marker.setPopup(
+            new mapboxgl.Popup({ offset: 16 }).setHTML(`
+              <div style="background:#0b0b0b;color:#fff;padding:14px;border-radius:12px">
+                <b>${(h.type || "UNKNOWN").toUpperCase()}</b><br/>
+                Severity: ${h.severity}<br/>
+                Status: ${h.status}<br/>
+                ${new Date(h.created_at).toLocaleString()}
+              </div>
+            `)
+          );
+
+          markersRef.current.push(marker);
+        });
+      });
+
+    return () => map.remove();
+  }, []);
+
+  return (
+    <>
+      <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+        <button onClick={() => exportToCSV(hazards)}>Export CSV</button>
+      </div>
+
+      <div ref={mapContainerRef} style={{ height: "70vh", width: "100%" }} />
+
+      <HazardReportTable hazards={hazards} />
+    </>
+  );
+}

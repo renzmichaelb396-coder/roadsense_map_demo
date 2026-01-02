@@ -1,0 +1,36 @@
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
+import { Suspense } from "react";
+import DashboardInner from "./page.inner";
+import { supabase } from "@/lib/supabase";
+
+type DbHazard = {
+  id: string;
+  type: string;
+  severity: "LOW" | "MEDIUM" | "HIGH";
+  status: "ACTIVE" | "RESOLVED";
+  latitude: number;
+  longitude: number;
+  created_at: string | null;
+};
+
+export default async function DashboardPage() {
+  const res = await supabase
+    .from("hazards")
+    .select("id,type,severity,status,latitude,longitude,created_at");
+
+  const hazards: DbHazard[] = res.data ?? [];
+
+  // 🔒 Normalize DB → UI contract here (single source of truth)
+  const normalized = hazards.map((h) => ({
+    ...h,
+    status: h.status === "ACTIVE" ? "reported" : "resolved",
+  }));
+
+  return (
+    <Suspense fallback={<div style={{ padding: 24 }}>Loading dashboard…</div>}>
+      <DashboardInner hazards={normalized} />
+    </Suspense>
+  );
+}

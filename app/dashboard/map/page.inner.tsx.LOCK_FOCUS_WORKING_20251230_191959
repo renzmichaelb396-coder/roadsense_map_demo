@@ -1,0 +1,164 @@
+"use client";
+
+import "mapbox-gl/dist/mapbox-gl.css";
+import mapboxgl from "mapbox-gl";
+import { useEffect, useRef } from "react";
+
+type Severity = "HIGH" | "MEDIUM" | "LOW";
+type Status = "reported" | "resolved";
+
+type Hazard = {
+  id: string;
+  type: string;
+  severity: Severity;
+  status: Status;
+  latitude: number;
+  longitude: number;
+};
+
+const SEVERITY_COLOR: Record<Severity, string> = {
+  HIGH: "#dc2626",
+  MEDIUM: "#f59e0b",
+  LOW: "#16a34a",
+};
+
+function markerLetter(type: string) {
+  const t = (type || "").toLowerCase();
+  if (t === "crack") return "C";
+  if (t === "pothole") return "P";
+  if (t === "flood") return "F";
+  if (t === "construction") return "R";
+  if (t === "debris") return "D";
+  return t.charAt(0).toUpperCase();
+}
+
+export default function MapPageInner({ hazards }: { hazards: Hazard[] }) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const mapRef = useRef<mapboxgl.Map | null>(null);
+
+  useEffect(() => {
+    console.log("[MAP] effect run");
+
+    if (!containerRef.current) {
+      console.log("[MAP] container missing");
+      return;
+    }
+
+    console.log("[MAP] location:", window.location.href);
+
+    const params = new URLSearchParams(window.location.search);
+    const focusId = params.get("focus");
+
+    console.log("[MAP] focus param:", focusId);
+    console.log("[MAP] hazard ids:", hazards.map(h => h.id));
+
+    const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
+    if (!token) {
+      console.error("[MAP] missing mapbox token");
+      return;
+    }
+
+    if (mapRef.current) {
+      mapRef.current.remove();
+      mapRef.current = null;
+    }
+
+    mapboxgl.accessToken = token;
+
+    const map = new mapboxgl.Map({
+      container: containerRef.current,
+      style: "mapbox://styles/mapbox/light-v11",
+      center: [120.9842, 14.5995],
+      zoom: 12,
+    });
+
+    mapRef.current = map;
+
+    map.on("load", () => {
+      console.log("[MAP] map loaded");
+
+      hazards.forEach((h) => {
+        const isFocused = focusId === h.id;
+        const el = document.createElement("div");
+
+        el.style.width = isFocused ? "40px" : "24px";
+        el.style.height = isFocused ? "40px" : "24px";
+        el.style.borderRadius = "50%";
+        el.style.background = SEVERITY_COLOR[h.severity];
+        el.style.opacity = isFocused ? "1" : "0.25";
+        el.style.color = "#fff";
+        el.style.display = "flex";
+        el.style.alignItems = "center";
+        el.style.justifyContent = "center";
+        el.style.fontWeight = "900";
+        el.style.fontSize = isFocused ? "15px" : "11px";
+        el.style.boxShadow = isFocused
+          ? "0 0 0 8px rgba(255,255,255,0.85), 0 16px 32px rgba(0,0,0,0.6)"
+          : "0 6px 16px rgba(0,0,0,0.35)";
+        el.innerText = markerLetter(h.type);
+
+        new mapboxgl.Marker(el)
+          .setLngLat([h.longitude, h.latitude])
+          .addTo(map);
+      });
+
+      if (focusId) {
+        const target = hazards.find((h) => h.id === focusId);
+        console.log("[MAP] focus target:", target);
+
+        if (target) {
+          console.log("[MAP] flying to target");
+          map.flyTo({
+            center: [target.longitude, target.latitude],
+            zoom: 18.8,
+            speed: 0.9,
+            curve: 1.5,
+            essential: true,
+          });
+        } else {
+          console.warn("[MAP] focus id not found in hazards");
+        }
+      }
+    });
+
+    return () => {
+      console.log("[MAP] cleanup");
+      map.remove();
+      mapRef.current = null;
+    };
+  }, [hazards]);
+
+  return (
+    <div style={{ position: "relative", height: "100vh", width: "100vw" }}>
+      <div ref={containerRef} style={{ position: "absolute", inset: 0 }} />
+
+      <div
+        style={{
+          position: "absolute",
+          left: 14,
+          bottom: 74,
+          zIndex: 10,
+          background: "#020617",
+          padding: 12,
+          borderRadius: 10,
+          color: "#fff",
+          fontSize: 12,
+          boxShadow: "0 10px 24px rgba(0,0,0,0.45)",
+          minWidth: 150,
+        }}
+      >
+        <div style={{ fontWeight: 800 }}>Severity</div>
+        <div>🔴 HIGH</div>
+        <div>🟠 MEDIUM</div>
+        <div>🟢 LOW</div>
+
+        <div style={{ fontWeight: 800, marginTop: 10 }}>Marker</div>
+        <div>C = Crack</div>
+        <div>P = Pothole</div>
+        <div>F = Flood</div>
+        <div>R = Construction</div>
+        <div>D = Debris</div>
+      </div>
+    </div>
+  );
+}

@@ -1,0 +1,37 @@
+2025-01 | LGU Web Map FINAL | Legend enlarged, severity dots enlarged | VERIFIED
+2025-01 | Dashboard Table | Barangay column removed (LGU cleanup) | VERIFIED
+2025-01 | Dashboard Table | Severity legend added + stronger row tints | VERIFIED
+2025-01 | Dashboard | Pre-status-normalization lock | VERIFIED
+2025-01 | Dashboard Table | Status normalized to ACTIVE/RESOLVED | VERIFIED
+2025-01 | Dashboard Table | ACTIVE hazards visually dominant | VERIFIED
+2025-01 | Dashboard | Default sort: ACTIVE + severity priority | VERIFIED
+2025-01 | Map | Pre LGU style lock | VERIFIED
+2025-01 | Map | Pre severity filters lock | VERIFIED
+2025-01 | Map | Severity filters added (LGU-safe) | VERIFIED
+2025-01 | Map | Pre-status-filter lock | VERIFIED
+2025-01 | Map | Pre-status-filter lock | VERIFIED
+2025-01 | Map | Status filter (ALL / ACTIVE / RESOLVED) | VERIFIED WORKING | Marker registry + persistent map
+2025-01 | Map | Status normalization fixed (resolved variants) | VERIFIED
+2025-01 | Map | Status normalization fixed (resolved variants) | VERIFIED
+2025-01 | Map | Combined filters + counts (terminal-safe full replace) | VERIFIED
+2025-01 | Map | Filters + counts + CSV export | VERIFIED
+2025-01 | LGU Web Map | Auto-fit bounds on filter change | VERIFIED
+2025-01 | LGU Web Map | Restored stable baseline (100vh container) | VERIFIED
+2025-01 | LGU Web Map | Print + Legend restored | VERIFIED
+2025-01 | Dashboard | Defensive normalization + correct counts/filters | LOCKED
+2025-01 | LGU Web | Row → Map focus (query hazard=id) | LOCKED
+2025-01 | Web Map | Legend always visible regardless of entry path | LOCKED
+2025-01 | Web Map | Unified action bar (Back + CSV + Print) for all entry paths | LOCKED
+2025-01 | Web Map | Print header rendered in JSX (useEffect-safe) | LOCKED
+2025-01 | Web Map | Row → Map deep focus via hazard query param | LOCKED
+2025-01 | Web Map | Autofit bounds unless hazard query param present | LOCKED
+2025-01 | Web LGU Map | Auto-fit bounds + row→map focus | LOCKED
+2025-01 | LGU Web Map | Correct autofit + row→map focus | LOCKED
+2025-01 | LGU Web Map | Adaptive fitBounds padding (UI-safe) | LOCKED
+2025-01 | LGU Web Map | Focus → Overview restore control | LOCKED
+2025-01 | LGU Web Map | Focused hazard visual emphasis (LGU-safe) | LOCKED
+2025-01 | LGU Web Map | Status filter → map visual sync | LOCKED
+2025-01 | LGU Web Map | Fixed bounds-aware state injection (parser-safe) | LOCKED
+2025-01 | LGU Web Map | Table synced to map viewport | LOCKED
+2025-01 | LGU Web Map | GOLD MASTER (row focus + autofit + table sync + exports)
+2025-01 | CSV + PDF exports confirmed working (LGU Dashboard Map) | page.LOCKED_CSV_AND_PDF_FINAL_2025-01.tsx
