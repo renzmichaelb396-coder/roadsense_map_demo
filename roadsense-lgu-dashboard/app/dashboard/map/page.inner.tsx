@@ -17,9 +17,9 @@ type Hazard = {
 };
 
 const SEVERITY_COLOR: Record<Severity, string> = {
-  HIGH: "#dc2626",
+  HIGH: "#ef4444",
   MEDIUM: "#f59e0b",
-  LOW: "#16a34a",
+  LOW: "#22c55e",
 };
 
 function markerLetter(type: string) {
@@ -55,7 +55,7 @@ export default function MapPageInner({ hazards }: { hazards: Hazard[] }) {
 
     const map = new mapboxgl.Map({
       container: containerRef.current,
-      style: "mapbox://styles/mapbox/streets-v12",
+      style: "mapbox://styles/mapbox/dark-v11",
       center: [120.9842, 14.5995],
       zoom: 12,
     });
@@ -67,22 +67,21 @@ export default function MapPageInner({ hazards }: { hazards: Hazard[] }) {
         const isFocused = focusId === h.id;
         const el = document.createElement("div");
 
-        el.style.width = isFocused ? "44px" : "30px";
-        el.style.height = isFocused ? "44px" : "30px";
+        el.style.width = isFocused ? "44px" : "28px";
+        el.style.height = isFocused ? "44px" : "28px";
         el.style.borderRadius = "50%";
         el.style.background = SEVERITY_COLOR[h.severity];
-        el.style.opacity = "1";
-        el.style.color = "#fff";
+        el.style.border = "3px solid #ffffff";
+        el.style.color = "#000";
         el.style.display = "flex";
         el.style.alignItems = "center";
         el.style.justifyContent = "center";
         el.style.fontWeight = "900";
-        el.style.fontSize = isFocused ? "16px" : "13px";
-        el.style.border = "3px solid #020617";
+        el.style.fontSize = isFocused ? "16px" : "12px";
+        el.style.zIndex = isFocused ? "999" : "1";
         el.style.boxShadow = isFocused
-          ? "0 0 0 6px rgba(0,0,0,0.6), 0 16px 30px rgba(0,0,0,0.6)"
-          : "0 8px 20px rgba(0,0,0,0.55)";
-        el.style.zIndex = isFocused ? "999" : "10";
+          ? "0 0 0 10px rgba(255,255,255,0.9), 0 18px 36px rgba(0,0,0,0.8)"
+          : "0 8px 20px rgba(0,0,0,0.6)";
         el.innerText = markerLetter(h.type);
 
         new mapboxgl.Marker(el)
@@ -95,9 +94,9 @@ export default function MapPageInner({ hazards }: { hazards: Hazard[] }) {
         if (target) {
           map.flyTo({
             center: [target.longitude, target.latitude],
-            zoom: 18,
+            zoom: 18.5,
             speed: 0.9,
-            curve: 1.4,
+            curve: 1.5,
             essential: true,
           });
         }
@@ -121,7 +120,6 @@ export default function MapPageInner({ hazards }: { hazards: Hazard[] }) {
     <div style={{ position: "relative", height: "100vh", width: "100vw" }}>
       <div ref={containerRef} style={{ position: "absolute", inset: 0 }} />
 
-      {/* LEGEND */}
       <div
         style={{
           position: "absolute",
@@ -154,7 +152,7 @@ export default function MapPageInner({ hazards }: { hazards: Hazard[] }) {
             <div style={{ fontWeight: 800 }}>Severity</div>
             <div>🔴 HIGH</div>
             <div>🟠 MEDIUM</div>
-            <div>�� LOW</div>
+            <div>🟢 LOW</div>
 
             <div style={{ fontWeight: 800, marginTop: 10 }}>Marker</div>
             <div>C = Crack</div>
@@ -166,7 +164,6 @@ export default function MapPageInner({ hazards }: { hazards: Hazard[] }) {
         )}
       </div>
 
-      {/* FOCUSED HAZARD PANEL */}
       {focused && (
         <div
           style={{
@@ -189,12 +186,8 @@ export default function MapPageInner({ hazards }: { hazards: Hazard[] }) {
           <div style={{ fontSize: 14, fontWeight: 800 }}>
             {focused.type.toUpperCase()}
           </div>
-          <div style={{ marginTop: 4 }}>
-            Severity: <b>{focused.severity}</b>
-          </div>
-          <div>
-            Status: <b>{focused.status.toUpperCase()}</b>
-          </div>
+          <div>Severity: <b>{focused.severity}</b></div>
+          <div>Status: <b>{focused.status.toUpperCase()}</b></div>
         </div>
       )}
     </div>
