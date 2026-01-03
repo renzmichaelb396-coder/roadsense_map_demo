@@ -36,6 +36,14 @@ const HAZARD_TYPES = [
 type HazardType = (typeof HAZARD_TYPES)[number]["key"];
 
 function severityColor(sev: number) {
+
+function normalizeSeverity(sev) {
+  if (sev === 1 || sev === 2 || sev === 3) return sev;
+  if (sev === "LOW") return 1;
+  if (sev === "MEDIUM") return 2;
+  if (sev === "HIGH") return 3;
+  return 1;
+}
   if (sev === 3) return "#ef4444";
   if (sev === 2) return "#f59e0b";
   return "#10b981";
@@ -227,7 +235,7 @@ export default function LGUMap() {
   const visibleHazards = useMemo(() => {
     return hazardsStable.filter((h: any) => {
       const st = safeStatus(h);
-      if (!showResolved && st === "resolved") return false;
+      if (!showResolved && st === "RESOLVED") return false;
       if (!severityFilter[h.severity]) return false;
       if (!typeFilter[h.type as HazardType]) return false;
       return true;
@@ -240,7 +248,7 @@ export default function LGUMap() {
 
     for (const h of hazardsStable as any[]) {
       const st = safeStatus(h);
-      if (st === "resolved") resolved++;
+      if (st === "RESOLVED") resolved++;
       else active++;
 
       if (h.severity === 3) high++;
@@ -668,8 +676,8 @@ export default function LGUMap() {
           );
         }, [visibleHazards]).map((h: any) => {
           const st = safeStatus(h);
-          const pinColor = st === "resolved" ? "#64748b" : severityColor(h.severity);
-          const opacity = st === "resolved" ? 0.25 : 1.0;
+          const pinColor = st === "RESOLVED" ? "#64748b" : severityColor(h.severity);
+          const opacity = st === "RESOLVED" ? 0.25 : 1.0;
 
           const markerKey = `${h.id}-${st}`;
 
