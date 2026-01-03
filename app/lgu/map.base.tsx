@@ -167,6 +167,8 @@ export default function LGUMap() {
       });
 
       await createHazard({
+
+      await safeReloadHazards();
         latitude: coord.latitude,
         longitude: coord.longitude,
         type,
@@ -174,13 +176,6 @@ export default function LGUMap() {
       });
 
       // refresh from DB so UI + counts update immediately
-      const data = await fetchHazards();
-      const normalized = (data || []).map((h: any) => ({
-        ...h,
-        severity: typeof normalizeSeverity === "function" ? normalizeSeverity(h.severity) : h.severity,
-        status: typeof h.status === "string" ? h.status.toUpperCase() : h.status,
-      }));
-      setHazards((prev) => [...prev, normalized]);
 
       setPlacementMode(false);
     } catch (e: any) {
