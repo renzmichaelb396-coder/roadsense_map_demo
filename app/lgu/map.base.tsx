@@ -161,7 +161,6 @@ export default function LGUMap() {
       setIsMutating(true);
 
       const { width, height } = Dimensions.get("window");
-      // Best-effort: center of the screen. Good enough for ops.
       const coord = await mapRef.current.coordinateForPoint({
         x: width / 2,
         y: height / 2,
@@ -170,16 +169,24 @@ export default function LGUMap() {
       await createHazard({
         latitude: coord.latitude,
         longitude: coord.longitude,
-        severity,
         type,
+        severity: typeof severityToDB === "function" ? severityToDB(severity) : severity,
       });
 
-      await safeReloadHazards();
-    } catch (e) {
+      // refresh from DB so UI + counts update immediately
+      const data = await fetchHazards();
+      const normalized = (data || []).map((h: any) => ({
+        ...h,
+        severity: typeof normalizeSeverity === "function" ? normalizeSeverity(h.severity) : h.severity,
+        status: typeof h.status === "string" ? h.status.toUpperCase() : h.status,
+      }));
+      setHazards((prev) => [...prev, normalized]);
+
+      setPlacementMode(false);
+    } catch (e: any) {
       console.warn("[LGUMap] confirmPlacement failed", e);
     } finally {
       setIsMutating(false);
-      setPlacementMode(false);
     }
   }
 
