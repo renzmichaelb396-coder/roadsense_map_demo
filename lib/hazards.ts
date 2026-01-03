@@ -37,6 +37,10 @@ export async function fetchHazards(): Promise<Hazard[]> {
   return (data ?? []) as Hazard[];
 }
 
+async function getUserId(sb) {
+  const { data } = await sb.auth.getUser();
+  return data?.user?.id || null;
+}
 export async function createHazard(input: {
   latitude: number;
   longitude: number;
