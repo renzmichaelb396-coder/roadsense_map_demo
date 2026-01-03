@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { View, Text, Pressable, Dimensions, Platform } from "react-native";
 import MapView, { Marker, Region, MapPressEvent } from "react-native-maps";
+import LGUHazardMarker from "../components/lgu/LGUHazardMarker";
 import * as Location from "expo-location";
 import {
   fetchHazards,
@@ -42,8 +43,13 @@ function severityColor(sev: number) {
 }
 
 function safeStatus(h: any): "reported" | "resolved" {
-  if (h?.deleted_at) return "resolved";
-  return h?.resolved === true ? "resolved" : "reported";
+  if (!h) return "reported";
+
+  if (h.status === "resolved") return "resolved";
+  if (h.resolved === true) return "resolved";
+  if (h.resolved_at) return "resolved";
+
+  return "reported";
 }
 
 function shortTypeLabel(t: string) {
@@ -175,9 +181,7 @@ export default function LGUMap() {
     setSelectedId(id);
   }
 
-  
-async function resolveSelected() {
-      console.log("[LGUMap] resolveSelected pressed", selected?.id);
+  async function resolveSelected() {
     if (!selected || isMutating) return;
     try {
       setIsMutating(true);
@@ -190,9 +194,7 @@ async function resolveSelected() {
     }
   }
 
-  
-async function deleteSelected() {
-      console.log("[LGUMap] deleteSelected pressed", selected?.id);
+  async function deleteSelected() {
     if (!selected || isMutating) return;
 
     const id = String((selected as any).id);
@@ -220,6 +222,7 @@ async function deleteSelected() {
       longitudeDelta: 0.06,
     };
 
+    setRegion(r);
     mapRef.current.animateToRegion(r, 350);
   }
 
@@ -231,7 +234,6 @@ async function deleteSelected() {
 
   const visibleHazards = useMemo(() => {
     return hazardsStable.filter((h: any) => {
-        if (h?.deleted_at) return false;
       const st = safeStatus(h);
       if (!showResolved && st === "resolved") return false;
       if (!severityFilter[h.severity]) return false;
@@ -245,8 +247,7 @@ async function deleteSelected() {
     let active = 0, resolved = 0;
 
     for (const h of hazardsStable as any[]) {
-        if (h?.deleted_at) continue;
-        const st = safeStatus(h);
+      const st = safeStatus(h);
       if (st === "resolved") resolved++;
       else active++;
 
@@ -657,10 +658,10 @@ async function deleteSelected() {
   return (
     <View style={{ flex: 1 }}>
       <MapView
-        ref={(r) => { mapRef.current = r; }}
+        ref={(r) => (mapRef.current = r)}
         style={{ flex: 1 }}
-        initialRegion={DEFAULT_REGION}
-        onLongPress={() => {
+        initialRegion={region}
+        onLongPress={(e: MapPressEvent) => {
           // LOCKED: long-press primary trigger
           if (!isMutating) enterPlacingMode();
         }}
@@ -681,17 +682,7 @@ async function deleteSelected() {
           const markerKey = `${h.id}-${st}`;
 
           return (
-            <Marker
-              key={markerKey}
-              coordinate={{
-                latitude: Number(h.latitude),
-                longitude: Number(h.longitude),
-              }}
-              pinColor={h.severity === 3 ? "red" : h.severity === 2 ? "orange" : "green"}
-              opacity={opacity}
-              tracksViewChanges={false}
-              onPress={() => onMarkerPress(String(h.id))}
-            />
+            <Marker key={markerKey} coordinate={{ latitude: Number(h.latitude), longitude: Number(h.longitude) }} tracksViewChanges={true} onPress={() => onMarkerPress(String(h.id))}><LGUHazardMarker severity={h.severity} type={h.type} resolved={safeStatus(h)==="resolved"} /></Marker>
           );
         })}
       </MapView>

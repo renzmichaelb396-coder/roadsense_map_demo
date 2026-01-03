@@ -36,6 +36,7 @@ export async function fetchHazards(): Promise<Hazard[]> {
   const { data, error } = await supabase
     .from("hazards")
     .select("*")
+    .is("deleted_at", null)
     .order("created_at", { ascending: false });
 
   if (error) throw error;
@@ -63,6 +64,7 @@ export async function createHazard(input: {
       type: input.type,
       severity: dbSeverity,
       resolved: false,
+      status: "REPORTED",
     })
     .select()
     .single();
@@ -81,7 +83,10 @@ export async function createHazard(input: {
 export async function resolveHazard(id: string): Promise<void> {
   const { error } = await supabase
     .from("hazards")
-    .update({ resolved: true })
+    .update({
+      resolved: true,
+      status: "RESOLVED",
+    })
     .eq("id", id);
 
   if (error) {
@@ -93,7 +98,10 @@ export async function resolveHazard(id: string): Promise<void> {
 export async function deleteHazard(id: string): Promise<void> {
   const { error } = await supabase
     .from("hazards")
-    .update({ deleted_at: new Date().toISOString() })
+    .update({
+      deleted_at: new Date().toISOString(),
+      status: "RESOLVED",
+    })
     .eq("id", id);
 
   if (error) {
