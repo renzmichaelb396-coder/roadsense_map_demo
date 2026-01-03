@@ -128,7 +128,6 @@ export default function LGUMap() {
       } catch {
         // keep default region
       }
-      await safeReloadHazards();
     })();
   }, []);
 
@@ -168,7 +167,6 @@ export default function LGUMap() {
 
       await createHazard({
 
-      await safeReloadHazards();
         latitude: coord.latitude,
         longitude: coord.longitude,
         type,
@@ -195,7 +193,6 @@ export default function LGUMap() {
     try {
       setIsMutating(true);
       await resolveHazard(String((selected as any).id));
-      await safeReloadHazards();
     } catch (e) {
       console.warn("[LGUMap] resolveSelected failed", e);
     } finally {
@@ -212,10 +209,8 @@ export default function LGUMap() {
     try {
       setIsMutating(true);
       await deleteHazard(id);
-      await safeReloadHazards();
     } catch (e) {
       console.warn("[LGUMap] deleteSelected failed", e);
-      await safeReloadHazards();
     } finally {
       setIsMutating(false);
     }
