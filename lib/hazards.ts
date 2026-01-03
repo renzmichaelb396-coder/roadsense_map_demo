@@ -24,6 +24,11 @@ function requireSupabase() {
   return supabase;
 }
 
+function severityToDB(sev) {
+  if (sev === 3 || sev === "HIGH") return "HIGH";
+  if (sev === 2 || sev === "MEDIUM") return "MEDIUM";
+  return "LOW";
+}
 export async function fetchHazards(): Promise<Hazard[]> {
   const sb = requireSupabase();
   if (!sb) return [];
