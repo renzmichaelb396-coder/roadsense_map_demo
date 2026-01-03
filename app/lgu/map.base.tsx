@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { View, Text, Pressable, Dimensions } from "react-native";
-import MapView, { Marker, Region, PROVIDER_GOOGLE } from "react-native-maps";
+import { View, Text, Pressable, Dimensions, Platform } from "react-native";
+import MapView, { Marker, Region, MapPressEvent } from "react-native-maps";
 import * as Location from "expo-location";
 import {
   fetchHazards,
@@ -10,419 +10,688 @@ import {
   Hazard,
 } from "@/lib/hazards";
 
-/**
- * GOALSS – ANDROID-ONLY LGU MAP (LOCKED)
- *
- * RULES:
- * - Long-press map = ONLY way to report hazard
- * - NO + FAB
- * - NO pinpoint / navigation arrows
- * - LGU impact markers (severity disks)
- * - Dashboard always visible
- * - Recenter always visible
- * - Tap marker => LGU action sheet (details / resolve / delete)
- */
+/* -------------------- LGU OPS CONFIG -------------------- */
 
 const DEFAULT_REGION: Region = {
   latitude: 14.5995,
   longitude: 120.9842,
-  latitudeDelta: 0.12,
-  longitudeDelta: 0.12,
+  latitudeDelta: 0.08,
+  longitudeDelta: 0.08,
 };
 
-type Sev = 1 | 2 | 3;
+const SEVERITIES = [
+  { key: 3, label: "HIGH", bg: "#ef4444" },
+  { key: 2, label: "MED", bg: "#f59e0b" },
+  { key: 1, label: "LOW", bg: "#10b981" },
+] as const;
 
-const SEVERITY: Record<Sev, { label: string; color: string }> = {
-  3: { label: "HIGH", color: "#dc2626" },
-  2: { label: "MED", color: "#f59e0b" },
-  1: { label: "LOW", color: "#16a34a" },
-};
+const HAZARD_TYPES = [
+  { key: "pothole", label: "Pothole" },
+  { key: "flood", label: "Flood" },
+  { key: "crack", label: "Crack" },
+  { key: "debris", label: "Debris" },
+  { key: "construction", label: "Construction" },
+] as const;
 
-const TYPES = ["Pothole", "Flood", "Crack", "Debris", "Construction"] as const;
-type HazardType = (typeof TYPES)[number];
+type HazardType = (typeof HAZARD_TYPES)[number]["key"];
 
-function normSeverity(v: any): Sev {
-  if (v === 3 || String(v).toUpperCase() === "HIGH") return 3;
-  if (v === 2 || String(v).toUpperCase().startsWith("MED")) return 2;
-  return 1;
+function severityColor(sev: number) {
+  if (sev === 3) return "#ef4444";
+  if (sev === 2) return "#f59e0b";
+  return "#10b981";
 }
 
-function LGUImpactMarker({
-  severity,
-  selected,
-}: {
-  severity: Sev;
-  selected: boolean;
-}) {
-  const color = SEVERITY[severity].color;
-  return (
-    <View
-      style={{
-        width: selected ? 28 : 22,
-        height: selected ? 28 : 22,
-        borderRadius: 14,
-        backgroundColor: color,
-        borderWidth: 3,
-        borderColor: "#0b1220",
-        opacity: selected ? 1 : 0.9,
-      }}
-    />
-  );
+function safeStatus(h: any): "reported" | "resolved" {
+  return h?.status === "resolved" ? "resolved" : "reported";
 }
+
+function shortTypeLabel(t: string) {
+  const found = HAZARD_TYPES.find((x) => x.key === t);
+  return found ? found.label : String(t || "Hazard");
+}
+
+/* -------------------- COMPONENT -------------------- */
 
 export default function LGUMap() {
   const mapRef = useRef<MapView | null>(null);
 
-  const [region, setRegion] = useState(DEFAULT_REGION);
+  const [region, setRegion] = useState<Region>(DEFAULT_REGION);
+  const [userCoord, setUserCoord] =
+    useState<{ latitude: number; longitude: number } | null>(null);
+
   const [hazards, setHazards] = useState<Hazard[]>([]);
-  const [placing, setPlacing] = useState(false);
-  const [severity, setSeverity] = useState<Sev>(2);
-  const [type, setType] = useState<HazardType>("Pothole");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [isMutating, setIsMutating] = useState(false);
+
+  // Center-pin placement mode (LOCKED)
+  const [placementMode, setPlacementMode] = useState(false);
+  const [severity, setSeverity] = useState<1 | 2 | 3>(2);
+  const [type, setType] = useState<HazardType>("pothole");
+
+  // LGU filters
+  const [severityFilter, setSeverityFilter] = useState<Record<number, boolean>>({
+    3: true,
+    2: true,
+    1: true,
+  });
+  const [typeFilter, setTypeFilter] = useState<Record<HazardType, boolean>>({
+    pothole: true,
+    flood: true,
+    crack: true,
+    debris: true,
+    construction: true,
+  });
   const [showResolved, setShowResolved] = useState(true);
 
-  const selected = hazards.find((h) => h.id === selectedId) ?? null;
+  async function safeReloadHazards() {
+    try {
+      const next = await fetchHazards();
+      setHazards(Array.isArray(next) ? next : []);
+    } catch (e) {
+      console.warn("[LGUMap] fetchHazards failed", e);
+      setHazards([]);
+    }
+  }
 
+  // Location bootstrap + initial load
   useEffect(() => {
     (async () => {
       try {
-        const perm = await Location.requestForegroundPermissionsAsync();
-        if (perm.status === "granted") {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status === "granted") {
           const loc = await Location.getLastKnownPositionAsync({});
           if (loc?.coords) {
-            setRegion({
+            const r: Region = {
               latitude: loc.coords.latitude,
               longitude: loc.coords.longitude,
-              latitudeDelta: 0.10,
-              longitudeDelta: 0.10,
-            });
+              latitudeDelta: 0.06,
+              longitudeDelta: 0.06,
+            };
+            setUserCoord({ latitude: r.latitude, longitude: r.longitude });
+            setRegion(r);
           }
         }
-      } catch {}
-      reload();
+      } catch {
+        // keep default region
+      }
+      await safeReloadHazards();
     })();
   }, []);
 
-  async function reload() {
-    const data = await fetchHazards();
-    setHazards(Array.isArray(data) ? data : []);
-  }
+  const selected = useMemo(() => {
+    if (!selectedId) return null;
+    return hazards.find((h: any) => String(h.id) === String(selectedId)) ?? null;
+  }, [selectedId, hazards]);
 
-  function isResolved(h: Hazard) {
-    return h.status === "resolved";
-  }
-
-  const visibleHazards = useMemo(
-    () => hazards.filter((h) => (showResolved ? true : !isResolved(h))),
-    [hazards, showResolved]
-  );
-
-  const counts = useMemo(() => {
-    let active = 0,
-      resolved = 0,
-      high = 0,
-      med = 0,
-      low = 0;
-
-    for (const h of hazards) {
-      const sev = normSeverity(h.severity);
-      if (isResolved(h)) resolved++;
-      else active++;
-      if (sev === 3) high++;
-      else if (sev === 2) med++;
-      else low++;
+  // Clear selection if it disappears
+  useEffect(() => {
+    if (selectedId && !hazards.some((h: any) => String(h.id) === String(selectedId))) {
+      setSelectedId(null);
     }
+  }, [hazards, selectedId]);
 
-    return { active, resolved, high, med, low };
-  }, [hazards]);
-
-  function recenter() {
-    mapRef.current?.animateToRegion(region, 400);
-  }
-
+  // LOCKED: single source of truth
   function enterPlacingMode() {
     setSelectedId(null);
-    setPlacing(true);
+    setPlacementMode(true);
+  }
+
+  function cancelPlacement() {
+    setPlacementMode(false);
   }
 
   async function confirmPlacement() {
     if (!mapRef.current || isMutating) return;
-    setIsMutating(true);
+
     try {
+      setIsMutating(true);
+
       const { width, height } = Dimensions.get("window");
+      // Best-effort: center of the screen. Good enough for ops.
       const coord = await mapRef.current.coordinateForPoint({
         x: width / 2,
         y: height / 2,
       });
 
       await createHazard({
-        type,
-        severity,
         latitude: coord.latitude,
         longitude: coord.longitude,
+        severity,
+        type,
       });
 
-      await reload();
+      await safeReloadHazards();
+    } catch (e) {
+      console.warn("[LGUMap] confirmPlacement failed", e);
     } finally {
-      setPlacing(false);
+      setIsMutating(false);
+      setPlacementMode(false);
+    }
+  }
+
+  function onMarkerPress(id: string) {
+    if (isMutating || placementMode) return;
+    setSelectedId(id);
+  }
+
+  async function resolveSelected() {
+    if (!selected || isMutating) return;
+    try {
+      setIsMutating(true);
+      await resolveHazard(String((selected as any).id));
+      await safeReloadHazards();
+    } catch (e) {
+      console.warn("[LGUMap] resolveSelected failed", e);
+    } finally {
       setIsMutating(false);
     }
   }
 
-  async function doResolve() {
+  async function deleteSelected() {
     if (!selected || isMutating) return;
-    setIsMutating(true);
-    await resolveHazard(selected.id);
+
+    const id = String((selected as any).id);
     setSelectedId(null);
-    await reload();
-    setIsMutating(false);
+
+    try {
+      setIsMutating(true);
+      await deleteHazard(id);
+      await safeReloadHazards();
+    } catch (e) {
+      console.warn("[LGUMap] deleteSelected failed", e);
+      await safeReloadHazards();
+    } finally {
+      setIsMutating(false);
+    }
   }
 
-  async function doDelete() {
-    if (!selected || isMutating) return;
-    setIsMutating(true);
-    await deleteHazard(selected.id);
-    setSelectedId(null);
-    await reload();
-    setIsMutating(false);
+  function recenter() {
+    if (!mapRef.current || !userCoord) return;
+
+    const r: Region = {
+      latitude: userCoord.latitude,
+      longitude: userCoord.longitude,
+      latitudeDelta: 0.06,
+      longitudeDelta: 0.06,
+    };
+
+    mapRef.current.animateToRegion(r, 350);
   }
 
-  return (
-    <View style={{ flex: 1 }}>
-      {/* DASHBOARD */}
-      <View
-        style={{
-          position: "absolute",
-          top: 0,
-          left: 0,
-          right: 0,
-          padding: 12,
-          backgroundColor: "rgba(11,18,32,0.92)",
-          zIndex: 20,
-        }}
-      >
-        <Text style={{ color: "#fff", fontWeight: "900", fontSize: 16 }}>
+  const hazardsStable = useMemo(() => {
+    const arr = [...hazards] as any[];
+    arr.sort((a, b) => String(a.id).localeCompare(String(b.id)));
+    return arr;
+  }, [hazards]);
+
+  const visibleHazards = useMemo(() => {
+    return hazardsStable.filter((h: any) => {
+      const st = safeStatus(h);
+      if (!showResolved && st === "resolved") return false;
+      if (!severityFilter[h.severity]) return false;
+      if (!typeFilter[h.type as HazardType]) return false;
+      return true;
+    });
+  }, [hazardsStable, severityFilter, typeFilter, showResolved]);
+
+  const counts = useMemo(() => {
+    let high = 0, med = 0, low = 0;
+    let active = 0, resolved = 0;
+
+    for (const h of hazardsStable as any[]) {
+      const st = safeStatus(h);
+      if (st === "resolved") resolved++;
+      else active++;
+
+      if (h.severity === 3) high++;
+      else if (h.severity === 2) med++;
+      else low++;
+    }
+    return { high, med, low, active, resolved };
+  }, [hazardsStable]);
+
+  const topBar = (
+    <View
+      style={{
+        position: "absolute",
+        top: 12,
+        left: 12,
+        right: 12,
+        padding: 10,
+        borderRadius: 14,
+        backgroundColor: "rgba(2,6,23,0.74)",
+        borderWidth: 1,
+        borderColor: "rgba(255,255,255,0.12)",
+      }}
+    >
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+        <Text style={{ color: "white", fontWeight: "900", letterSpacing: 0.4 }}>
           LGU HAZARD OPS
         </Text>
-        <Text style={{ color: "#cbd5f5", marginTop: 4 }}>
-          Active: {counts.active} • Resolved: {counts.resolved}
-        </Text>
-
-        <View style={{ flexDirection: "row", gap: 8, marginTop: 8 }}>
-          <Text style={{ color: "#dc2626" }}>HIGH {counts.high}</Text>
-          <Text style={{ color: "#f59e0b" }}>MED {counts.med}</Text>
-          <Text style={{ color: "#16a34a" }}>LOW {counts.low}</Text>
-        </View>
 
         <Pressable
           onPress={() => setShowResolved((v) => !v)}
           style={{
-            position: "absolute",
-            right: 12,
-            top: 12,
+            paddingVertical: 8,
             paddingHorizontal: 12,
-            paddingVertical: 6,
-            borderRadius: 10,
-            backgroundColor: "rgba(255,255,255,0.12)",
+            borderRadius: 999,
+            backgroundColor: showResolved ? "rgba(148,163,184,0.22)" : "rgba(239,68,68,0.18)",
+            borderWidth: 1,
+            borderColor: "rgba(255,255,255,0.15)",
           }}
         >
-          <Text style={{ color: "#fff", fontWeight: "800" }}>
-            Resolved: {showResolved ? "ON" : "OFF"}
+          <Text style={{ color: "white", fontWeight: "900", fontSize: 12 }}>
+            {showResolved ? "Resolved: ON" : "Resolved: OFF"}
           </Text>
         </Pressable>
       </View>
 
-      <MapView
-        ref={mapRef}
-        provider={PROVIDER_GOOGLE}
-        style={{ flex: 1 }}
-        initialRegion={region}
-        onLongPress={enterPlacingMode}
-      >
-        {visibleHazards.map((h) => (
-          <Marker
-            key={h.id}
-            coordinate={{ latitude: h.latitude, longitude: h.longitude }}
-            onPress={() => setSelectedId(h.id)}
-            anchor={{ x: 0.5, y: 0.5 }}
-          >
-            <LGUImpactMarker
-              severity={normSeverity(h.severity)}
-              selected={h.id === selectedId}
-            />
-          </Marker>
-        ))}
-      </MapView>
+      <View style={{ flexDirection: "row", gap: 8, marginTop: 10 }}>
+        <View style={{ flex: 1, borderRadius: 12, padding: 10, backgroundColor: "rgba(239,68,68,0.16)", borderWidth: 1, borderColor: "rgba(239,68,68,0.22)" }}>
+          <Text style={{ color: "white", fontWeight: "900", fontSize: 12 }}>HIGH</Text>
+          <Text style={{ color: "white", fontWeight: "900", fontSize: 18 }}>{counts.high}</Text>
+        </View>
+        <View style={{ flex: 1, borderRadius: 12, padding: 10, backgroundColor: "rgba(245,158,11,0.14)", borderWidth: 1, borderColor: "rgba(245,158,11,0.20)" }}>
+          <Text style={{ color: "white", fontWeight: "900", fontSize: 12 }}>MED</Text>
+          <Text style={{ color: "white", fontWeight: "900", fontSize: 18 }}>{counts.med}</Text>
+        </View>
+        <View style={{ flex: 1, borderRadius: 12, padding: 10, backgroundColor: "rgba(16,185,129,0.14)", borderWidth: 1, borderColor: "rgba(16,185,129,0.20)" }}>
+          <Text style={{ color: "white", fontWeight: "900", fontSize: 12 }}>LOW</Text>
+          <Text style={{ color: "white", fontWeight: "900", fontSize: 18 }}>{counts.low}</Text>
+        </View>
+      </View>
 
-      {/* RECENTER */}
+      <View style={{ flexDirection: "row", gap: 8, marginTop: 10 }}>
+        <Text style={{ color: "rgba(226,232,240,0.85)", fontWeight: "800", fontSize: 12 }}>
+          Active: {counts.active} • Resolved: {counts.resolved}
+        </Text>
+
+        <Pressable
+          onPress={safeReloadHazards}
+          style={{
+            marginLeft: "auto",
+            paddingVertical: 6,
+            paddingHorizontal: 10,
+            borderRadius: 999,
+            backgroundColor: "rgba(37,99,235,0.18)",
+            borderWidth: 1,
+            borderColor: "rgba(37,99,235,0.22)",
+          }}
+          disabled={isMutating}
+        >
+          <Text style={{ color: "white", fontWeight: "900", fontSize: 12 }}>
+            REFRESH
+          </Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+
+  const bottomReport = (
+    <View style={{ position: "absolute", left: 14, right: 14, bottom: 88 }}>
       <Pressable
-        onPress={recenter}
+        onPress={enterPlacingMode}
         style={{
-          position: "absolute",
-          right: 16,
-          bottom: 120,
-          backgroundColor: "#0b1220",
-          padding: 14,
-          borderRadius: 30,
-          borderWidth: 1,
-          borderColor: "rgba(255,255,255,0.2)",
+          backgroundColor: "#2563eb",
+          paddingVertical: 16,
+          borderRadius: 18,
+          alignItems: "center",
+          shadowColor: "#000",
+          shadowOpacity: 0.25,
+          shadowRadius: 10,
+          shadowOffset: { width: 0, height: 6 },
+          elevation: 6,
+          opacity: isMutating ? 0.7 : 1,
+        }}
+        disabled={isMutating}
+      >
+        <Text style={{ color: "white", fontWeight: "900", fontSize: 16, letterSpacing: 0.3 }}>
+          + REPORT HAZARD
+        </Text>
+        <Text style={{ color: "rgba(226,232,240,0.85)", fontWeight: "800", fontSize: 12, marginTop: 6 }}>
+          Long-press also works (primary)
+        </Text>
+      </Pressable>
+    </View>
+  );
+
+  const recenterBtn = (
+    <Pressable
+      onPress={recenter}
+      style={{
+        position: "absolute",
+        right: 14,
+        bottom: 166,
+        paddingVertical: 10,
+        paddingHorizontal: 12,
+        borderRadius: 18,
+        backgroundColor: "rgba(0,0,0,0.85)",
+        borderWidth: 1,
+        borderColor: "rgba(255,255,255,0.22)",
+        flexDirection: "row",
+        gap: 10,
+        alignItems: "center",
+        justifyContent: "center",
+        shadowColor: "#000",
+        shadowOpacity: 0.30,
+        shadowRadius: 12,
+        shadowOffset: { width: 0, height: 8 },
+        elevation: 9,
+        opacity: userCoord ? 1 : 0.45,
+      }}
+      disabled={!userCoord}
+    >
+      <View
+        style={{
+          width: 42,
+          height: 42,
+          borderRadius: 21,
+          backgroundColor: "rgba(37,99,235,0.95)",
+          alignItems: "center",
+          justifyContent: "center",
         }}
       >
-        <Text style={{ color: "#fff", fontWeight: "900" }}>◎</Text>
-      </Pressable>
+        <Text style={{ color: "white", fontSize: 22, fontWeight: "900" }}>⌖</Text>
+      </View>
 
-      {/* REPORT SHEET */}
-      {placing && (
+      <View style={{ alignItems: "flex-start" }}>
+        <Text style={{ color: "white", fontWeight: "900", fontSize: 12, letterSpacing: 0.2 }}>
+          RECENTER
+        </Text>
+        <Text style={{ color: "rgba(226,232,240,0.85)", fontWeight: "800", fontSize: 11 }}>
+          My location
+        </Text>
+      </View>
+    </Pressable>
+  );
+
+  const placingOverlay = placementMode ? (
+    <>
+      {/* Center pin */}
+      <View
+        pointerEvents="none"
+        style={{
+          position: "absolute",
+          left: 0,
+          right: 0,
+          top: 0,
+          bottom: 0,
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
         <View
           style={{
-            position: "absolute",
-            left: 12,
-            right: 12,
-            bottom: 16,
-            backgroundColor: "rgba(11,18,32,0.95)",
-            borderRadius: 18,
-            padding: 14,
+            width: 18,
+            height: 18,
+            borderRadius: 9,
+            backgroundColor: "#dc2626",
+            borderWidth: 3,
+            borderColor: "white",
+            shadowColor: "#000",
+            shadowOpacity: 0.25,
+            shadowRadius: 8,
+            shadowOffset: { width: 0, height: 4 },
+            elevation: 6,
+          }}
+        />
+        <View
+          style={{
+            marginTop: 10,
+            paddingHorizontal: 12,
+            paddingVertical: 8,
+            borderRadius: 999,
+            backgroundColor: "rgba(2,6,23,0.75)",
           }}
         >
-          <Text style={{ color: "#fff", fontWeight: "900", fontSize: 16 }}>
-            REPORT HAZARD
+          <Text style={{ color: "white", fontWeight: "900", fontSize: 12 }}>
+            Move map • Confirm at center pin
           </Text>
+        </View>
+      </View>
 
-          <View style={{ flexDirection: "row", gap: 8, marginTop: 10 }}>
-            {[3, 2, 1].map((s) => (
+      {/* Panel */}
+      <View
+        style={{
+          position: "absolute",
+          left: 12,
+          right: 12,
+          bottom: 88,
+          backgroundColor: "rgba(2,6,23,0.92)",
+          borderRadius: 20,
+          padding: 14,
+          borderWidth: 1,
+          borderColor: "rgba(255,255,255,0.12)",
+        }}
+      >
+        <Text style={{ color: "white", fontWeight: "900", fontSize: 14, marginBottom: 10 }}>
+          Report a hazard (LGU)
+        </Text>
+
+        {/* Severity */}
+        <View style={{ flexDirection: "row", gap: 10, marginBottom: 10 }}>
+          {SEVERITIES.map((s) => (
+            <Pressable
+              key={s.key}
+              onPress={() => setSeverity(s.key)}
+              style={{
+                flex: 1,
+                paddingVertical: 12,
+                borderRadius: 14,
+                alignItems: "center",
+                backgroundColor: severity === s.key ? s.bg : "rgba(148,163,184,0.20)",
+                borderWidth: 1,
+                borderColor: "rgba(255,255,255,0.10)",
+              }}
+            >
+              <Text style={{ color: "white", fontWeight: "900" }}>{s.label}</Text>
+            </Pressable>
+          ))}
+        </View>
+
+        {/* Type */}
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
+          {HAZARD_TYPES.map((t) => {
+            const active = type === t.key;
+            return (
               <Pressable
-                key={s}
-                onPress={() => setSeverity(s as Sev)}
+                key={t.key}
+                onPress={() => setType(t.key)}
                 style={{
-                  flex: 1,
-                  padding: 10,
-                  borderRadius: 12,
-                  backgroundColor:
-                    severity === s ? SEVERITY[s as Sev].color : "rgba(255,255,255,0.1)",
+                  paddingVertical: 10,
+                  paddingHorizontal: 12,
+                  borderRadius: 999,
+                  backgroundColor: active ? "rgba(37,99,235,0.85)" : "rgba(148,163,184,0.18)",
+                  borderWidth: 1,
+                  borderColor: "rgba(255,255,255,0.10)",
                 }}
               >
-                <Text style={{ color: "#fff", textAlign: "center", fontWeight: "800" }}>
-                  {SEVERITY[s as Sev].label}
+                <Text style={{ color: "white", fontWeight: "800", fontSize: 12 }}>
+                  {t.label}
                 </Text>
               </Pressable>
-            ))}
-          </View>
-
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
-            {TYPES.map((t) => (
-              <Pressable
-                key={t}
-                onPress={() => setType(t)}
-                style={{
-                  paddingVertical: 8,
-                  paddingHorizontal: 12,
-                  borderRadius: 10,
-                  backgroundColor:
-                    type === t ? "#2563eb" : "rgba(255,255,255,0.1)",
-                }}
-              >
-                <Text style={{ color: "#fff", fontWeight: "800" }}>{t}</Text>
-              </Pressable>
-            ))}
-          </View>
-
-          <View style={{ flexDirection: "row", gap: 10, marginTop: 14 }}>
-            <Pressable
-              onPress={() => setPlacing(false)}
-              style={{
-                flex: 1,
-                padding: 14,
-                borderRadius: 14,
-                backgroundColor: "rgba(255,255,255,0.12)",
-                alignItems: "center",
-              }}
-            >
-              <Text style={{ color: "#fff", fontWeight: "900" }}>CANCEL</Text>
-            </Pressable>
-
-            <Pressable
-              onPress={confirmPlacement}
-              style={{
-                flex: 1,
-                padding: 14,
-                borderRadius: 14,
-                backgroundColor: "#16a34a",
-                alignItems: "center",
-              }}
-            >
-              <Text style={{ color: "#fff", fontWeight: "900" }}>
-                {isMutating ? "SAVING..." : "CONFIRM"}
-              </Text>
-            </Pressable>
-          </View>
+            );
+          })}
         </View>
-      )}
 
-      {/* SELECTED HAZARD SHEET */}
-      {selected && (
-        <View
-          style={{
-            position: "absolute",
-            left: 12,
-            right: 12,
-            bottom: 16,
-            backgroundColor: "rgba(11,18,32,0.95)",
-            borderRadius: 18,
-            padding: 14,
-          }}
-        >
-          <Text style={{ color: "#fff", fontWeight: "900", fontSize: 16 }}>
-            {selected.type} • {isResolved(selected) ? "RESOLVED" : "ACTIVE"} •{" "}
-            {SEVERITY[normSeverity(selected.severity)].label}
-          </Text>
-
-          <View style={{ flexDirection: "row", gap: 10, marginTop: 12 }}>
-            <Pressable
-              onPress={() => setSelectedId(null)}
-              style={{
-                flex: 1,
-                padding: 14,
-                borderRadius: 14,
-                backgroundColor: "rgba(255,255,255,0.12)",
-                alignItems: "center",
-              }}
-            >
-              <Text style={{ color: "#fff", fontWeight: "900" }}>CLOSE</Text>
-            </Pressable>
-
-            {!isResolved(selected) && (
-              <Pressable
-                onPress={doResolve}
-                style={{
-                  flex: 1,
-                  padding: 14,
-                  borderRadius: 14,
-                  backgroundColor: "#16a34a",
-                  alignItems: "center",
-                }}
-              >
-                <Text style={{ color: "#fff", fontWeight: "900" }}>RESOLVE</Text>
-              </Pressable>
-            )}
-          </View>
-
+        <View style={{ flexDirection: "row", gap: 10 }}>
           <Pressable
-            onPress={doDelete}
+            onPress={cancelPlacement}
             style={{
-              marginTop: 10,
-              padding: 14,
+              flex: 1,
+              backgroundColor: "rgba(148,163,184,0.22)",
+              paddingVertical: 14,
               borderRadius: 14,
-              backgroundColor: "#dc2626",
               alignItems: "center",
             }}
+            disabled={isMutating}
           >
-            <Text style={{ color: "#fff", fontWeight: "900" }}>
-              DELETE (INVALID / DUPLICATE ONLY)
+            <Text style={{ color: "white", fontWeight: "900" }}>CANCEL</Text>
+          </Pressable>
+
+          <Pressable
+            onPress={confirmPlacement}
+            style={{
+              flex: 1,
+              backgroundColor: "#16a34a",
+              paddingVertical: 14,
+              borderRadius: 14,
+              alignItems: "center",
+              opacity: isMutating ? 0.7 : 1,
+            }}
+            disabled={isMutating}
+          >
+            <Text style={{ color: "white", fontWeight: "900" }}>
+              {isMutating ? "SAVING…" : "CONFIRM"}
             </Text>
           </Pressable>
         </View>
-      )}
+      </View>
+    </>
+  ) : null;
+
+  const selectedCard = selected ? (
+    <View
+      style={{
+        position: "absolute",
+        left: 12,
+        right: 12,
+        bottom: 88,
+        backgroundColor: "rgba(2,6,23,0.92)",
+        borderRadius: 20,
+        padding: 14,
+        borderWidth: 1,
+        borderColor: "rgba(255,255,255,0.12)",
+      }}
+    >
+      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+        <Text style={{ color: "white", fontWeight: "900", fontSize: 14 }}>
+          {shortTypeLabel((selected as any).type)} • {safeStatus(selected) === "resolved" ? "RESOLVED" : "ACTIVE"}
+        </Text>
+
+        <View
+          style={{
+            paddingVertical: 6,
+            paddingHorizontal: 10,
+            borderRadius: 999,
+            backgroundColor: safeStatus(selected) === "resolved" ? "rgba(148,163,184,0.18)" : "rgba(16,185,129,0.14)",
+            borderWidth: 1,
+            borderColor: "rgba(255,255,255,0.12)",
+          }}
+        >
+          <Text style={{ color: "white", fontWeight: "900", fontSize: 12 }}>
+            {safeStatus(selected) === "resolved" ? "HISTORICAL" : "ACTION"}
+          </Text>
+        </View>
+      </View>
+
+      <Text style={{ color: "rgba(226,232,240,0.85)", marginTop: 8, fontStyle: "italic" }}>
+        {safeStatus(selected) === "resolved"
+          ? "Resolved hazards are kept for historical accountability."
+          : "Resolve after validation; delete only if duplicate/invalid."}
+      </Text>
+
+      <View style={{ flexDirection: "row", gap: 10, marginTop: 12 }}>
+        <Pressable
+          onPress={() => setSelectedId(null)}
+          style={{
+            flex: 1,
+            backgroundColor: "rgba(148,163,184,0.20)",
+            paddingVertical: 12,
+            borderRadius: 14,
+            alignItems: "center",
+          }}
+          disabled={isMutating}
+        >
+          <Text style={{ color: "white", fontWeight: "900" }}>CLOSE</Text>
+        </Pressable>
+
+        {safeStatus(selected) !== "resolved" ? (
+          <Pressable
+            onPress={resolveSelected}
+            style={{
+              flex: 1,
+              backgroundColor: "#16a34a",
+              paddingVertical: 12,
+              borderRadius: 14,
+              alignItems: "center",
+              opacity: isMutating ? 0.7 : 1,
+            }}
+            disabled={isMutating}
+          >
+            <Text style={{ color: "white", fontWeight: "900" }}>
+              {isMutating ? "…" : "RESOLVE"}
+            </Text>
+          </Pressable>
+        ) : (
+          <View style={{ flex: 1 }} />
+        )}
+
+        <Pressable
+          onPress={deleteSelected}
+          style={{
+            flex: 1,
+            backgroundColor: "#991b1b",
+            paddingVertical: 12,
+            borderRadius: 14,
+            alignItems: "center",
+            opacity: isMutating ? 0.7 : 1,
+          }}
+          disabled={isMutating}
+        >
+          <Text style={{ color: "white", fontWeight: "900" }}>
+            {isMutating ? "…" : "DELETE"}
+          </Text>
+        </Pressable>
+      </View>
+    </View>
+  ) : null;
+
+  return (
+    <View style={{ flex: 1 }}>
+      <MapView
+        ref={(r) => (mapRef.current = r)}
+        style={{ flex: 1 }}
+        initialRegion={DEFAULT_REGION}
+        onLongPress={(e: MapPressEvent) => {
+          // LOCKED: long-press primary trigger
+          if (!isMutating) enterPlacingMode();
+        }}
+        showsUserLocation={true}
+        showsMyLocationButton={false}
+      >
+        {useMemo(() => {
+          return visibleHazards.filter(
+            (h: any) =>
+              Number.isFinite(Number(h?.latitude)) &&
+              Number.isFinite(Number(h?.longitude))
+          );
+        }, [visibleHazards]).map((h: any) => {
+          const st = safeStatus(h);
+          const pinColor = st === "resolved" ? "#64748b" : severityColor(h.severity);
+          const opacity = st === "resolved" ? 0.25 : 1.0;
+
+          const markerKey = `${h.id}-${st}`;
+
+          return (
+            <Marker
+              key={markerKey}
+              coordinate={{
+                latitude: Number(h.latitude),
+                longitude: Number(h.longitude),
+              }}
+              pinColor={h.severity === 3 ? "red" : h.severity === 2 ? "orange" : "green"}
+              opacity={opacity}
+              tracksViewChanges={false}
+              onPress={() => onMarkerPress(String(h.id))}
+            />
+          );
+        })}
+      </MapView>
+
+      {topBar}
+      {recenterBtn}
+      {placementMode ? placingOverlay : selected ? selectedCard : bottomReport}
     </View>
   );
 }
