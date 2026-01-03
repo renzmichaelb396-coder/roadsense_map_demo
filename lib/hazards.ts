@@ -3,6 +3,12 @@ import { v4 as uuidv4 } from "uuid";
 
 export type HazardStatus = "reported" | "resolved";
 
+function severityToDB(sev: any): "LOW" | "MEDIUM" | "HIGH" {
+  if (sev === 3 || sev === "HIGH") return "HIGH";
+  if (sev === 2 || sev === "MEDIUM") return "MEDIUM";
+  return "LOW";
+}
+
 export type Hazard = {
   id: string;
   latitude: number;
@@ -43,7 +49,7 @@ export async function createHazard(input: {
     latitude: input.latitude,
     longitude: input.longitude,
     type: input.type,
-    severity: input.severity,
+    severity: severityToDB(input.severity),
     status: "REPORTED",
   };
 
