@@ -1,111 +1,121 @@
-import { supabase as _supabase } from "./supabase";
-const supabase = _supabase!;
+import { supabase } from "./supabase";
 
 export type Hazard = {
   id: string;
+  type: string;
+  severity: "LOW" | "MEDIUM" | "HIGH" | number;
+  status: "reported" | "resolved" | string;
   latitude: number;
   longitude: number;
-  type: string;
-  severity: number; // UI: 1 | 2 | 3
-  resolved: boolean;
-  deleted_at?: string | null;
   created_at?: string | null;
+  updated_at?: string | null;
 };
 
-/**
- * DB → UI normalization
- * DB: "LOW" | "MEDIUM" | "HIGH"
- * UI: 1 | 2 | 3
- */
-function dbSeverityToUi(sev: unknown): number {
-  if (sev === "HIGH") return 3;
-  if (sev === "MEDIUM") return 2;
-  return 1;
+function toNumber(v: any): number | null {
+  const n = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(n) ? n : null;
 }
 
-/**
- * UI → DB normalization
- */
-function uiSeverityToDb(sev: unknown): "LOW" | "MEDIUM" | "HIGH" {
-  if (sev === 3 || sev === "HIGH") return "HIGH";
-  if (sev === 2 || sev === "MEDIUM") return "MEDIUM";
+function toSeverityText(sev: any): "LOW" | "MEDIUM" | "HIGH" {
+  // accept number or string
+  if (sev === 3 || sev === "3" || String(sev).toUpperCase() === "HIGH") return "HIGH";
+  if (sev === 2 || sev === "2" || String(sev).toUpperCase() === "MEDIUM") return "MEDIUM";
   return "LOW";
 }
 
 export async function fetchHazards(): Promise<Hazard[]> {
   const { data, error } = await supabase
-    .from("hazards")
-    .select("*")
-    .is("deleted_at", null)
+    .from("hazards_lgu_view")
+    .select("id,type,severity,status,latitude,longitude,created_at,updated_at")
     .order("created_at", { ascending: false });
 
   if (error) throw error;
-  if (!Array.isArray(data)) return [];
 
-  return data.map((h: any) => ({
-    ...h,
-    severity: dbSeverityToUi(h.severity),
-  })) as Hazard[];
+  const rows = Array.isArray(data) ? data : [];
+  const cleaned: Hazard[] = [];
+
+  for (const r of rows as any[]) {
+    const lat = toNumber(r.latitude);
+    const lng = toNumber(r.longitude);
+    if (lat == null || lng == null) continue;
+
+    cleaned.push({
+      id: String(r.id),
+      type: String(r.type ?? "hazard"),
+      severity: (typeof r.severity === "string" ? r.severity.toUpperCase() : r.severity) as any,
+      status: String(r.status ?? "reported"),
+      latitude: lat,
+      longitude: lng,
+      created_at: r.created_at ?? null,
+      updated_at: r.updated_at ?? null,
+    });
+  }
+
+  return cleaned;
 }
 
 export async function createHazard(input: {
+  type: string;
+  severity: "LOW" | "MEDIUM" | "HIGH" | number;
+  status?: "reported" | "resolved";
   latitude: number;
   longitude: number;
-  type: string;
-  severity: number;
-}): Promise<Hazard> {
-  const dbSeverity = uiSeverityToDb(input.severity);
+}): Promise<{ id: string } | null> {
+  const severityText = toSeverityText(input.severity);
+  const status = input.status ?? "reported";
+
+  // IMPORTANT: PostGIS geography/geometry accepts this format for SRID point
+  const locationWkt = `SRID=4326;POINT(${input.longitude} ${input.latitude})`;
 
   const { data, error } = await supabase
     .from("hazards")
     .insert({
-      latitude: input.latitude,
-      longitude: input.longitude,
       type: input.type,
-      severity: dbSeverity,
-      resolved: false,
-      status: "REPORTED",
+      severity: severityText,
+      status,
+      location: locationWkt,
     })
-    .select()
+    .select("id")
     .single();
 
-  if (error) {
-    console.error("SUPABASE createHazard error:", error);
-    throw error;
-  }
+  if (error) throw error;
+  if (!data?.id) return null;
 
-  return {
-    ...(data as any),
-    severity: dbSeverityToUi(data.severity),
-  } as Hazard;
+  return { id: String(data.id) };
 }
 
 export async function resolveHazard(id: string): Promise<void> {
   const { error } = await supabase
     .from("hazards")
-    .update({
-      resolved: true,
-      status: "RESOLVED",
-    })
+    .update({ status: "resolved" })
     .eq("id", id);
 
-  if (error) {
-    console.error("SUPABASE resolveHazard error:", error);
-    throw error;
-  }
+  if (error) throw error;
 }
 
 export async function deleteHazard(id: string): Promise<void> {
-  const { error } = await supabase
-    .from("hazards")
-    .update({
-      deleted_at: new Date().toISOString(),
-      status: "RESOLVED",
-    })
-    .eq("id", id);
+  const { error } = await supabase.from("hazards").delete().eq("id", id);
+  if (error) throw error;
+}
 
-  if (error) {
-    console.error("SUPABASE deleteHazard error:", error);
-    throw error;
-  }
+/**
+ * Back-compat shims (older maps expected these names).
+ * Keep them so nothing randomly breaks.
+ */
+export async function loadHazards() {
+  return fetchHazards();
+}
+export async function addHazard(h: any) {
+  return createHazard({
+    type: h?.type ?? "pothole",
+    severity: h?.severity ?? "MEDIUM",
+    status: h?.status ?? "reported",
+    latitude: h?.latitude,
+    longitude: h?.longitude,
+  });
+}
+export async function updateHazardStatus(id: string, status: "reported" | "resolved") {
+  if (status === "resolved") return resolveHazard(String(id));
+  const { error } = await supabase.from("hazards").update({ status }).eq("id", id);
+  if (error) throw error;
 }
