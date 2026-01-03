@@ -44,7 +44,7 @@ export async function createHazard(input: {
     longitude: input.longitude,
     type: input.type,
     severity: input.severity,
-    status: "reported",
+    status: "REPORTED",
   };
 
   if (!sb) return hazard;
@@ -66,7 +66,7 @@ export async function resolveHazard(id: string) {
   const sb = requireSupabase();
   if (!sb) return;
 
-  const { error } = await sb.from("hazards").update({ status: "resolved" }).eq("id", id);
+  const { error } = await sb.from("hazards").update({ status: "RESOLVED" }).eq("id", id);
   if (error) throw error;
 }
 
