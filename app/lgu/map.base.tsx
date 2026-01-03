@@ -38,6 +38,12 @@ type HazardType = (typeof HAZARD_TYPES)[number]["key"];
 function severityColor(sev: number) {
 
 function normalizeSeverity(sev) {
+
+function severityToDB(sev) {
+  if (sev === 3) return "HIGH";
+  if (sev === 2) return "MEDIUM";
+  return "LOW";
+}
   if (sev === 1 || sev === 2 || sev === 3) return sev;
   if (sev === "LOW") return 1;
   if (sev === "MEDIUM") return 2;
