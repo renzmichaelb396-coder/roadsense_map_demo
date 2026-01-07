@@ -60,7 +60,7 @@ export default function LGUMap() {
 
   const [hazards, setHazards] = useState<Hazard[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [placementMode, setPlacementMode] = useState(false);
+  const [isMutating, setIsMutating] = useState(false);  const [placementMode, setPlacementMode] = useState(false);
   const [severity, setSeverity] = useState<1 | 2 | 3>(2);
   const [type, setType] = useState<HazardType>("pothole");
 
