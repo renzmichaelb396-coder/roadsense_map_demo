@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { View, Text, Pressable, Dimensions, Platform } from "react-native";
-import MapView, { Marker, Region, MapPressEvent } from "react-native-maps";
+import MapView, { Marker, Region, MapPressEvent, PROVIDER_GOOGLE } from "react-native-maps";
 import * as Location from "expo-location";
 import {
   fetchHazards,
@@ -54,7 +54,7 @@ function shortTypeLabel(t: string) {
 
 export default function LGUMap() {
   const mapRef = useRef<MapView | null>(null);
-
+    provider={PROVIDER_GOOGLE}
   const [region, setRegion] = useState<Region>(DEFAULT_REGION);
   const [userCoord, setUserCoord] =
     useState<{ latitude: number; longitude: number } | null>(null);
@@ -651,7 +651,7 @@ export default function LGUMap() {
   return (
     <View style={{ flex: 1 }}>
       <MapView
-        ref={(r) => (mapRef.current = r)}
+    provider={PROVIDER_GOOGLE}        ref={(r) => (mapRef.current = r)}
         style={{ flex: 1 }}
         initialRegion={region}
         onLongPress={(e: MapPressEvent) => {
