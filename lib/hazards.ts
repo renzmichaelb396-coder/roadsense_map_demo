@@ -3,12 +3,6 @@ import { v4 as uuidv4 } from "uuid";
 
 export type HazardStatus = "reported" | "resolved";
 
-function severityToDB(sev: any): "LOW" | "MEDIUM" | "HIGH" {
-  if (sev === 3 || sev === "HIGH") return "HIGH";
-  if (sev === 2 || sev === "MEDIUM") return "MEDIUM";
-  return "LOW";
-}
-
 export type Hazard = {
   id: string;
   latitude: number;
@@ -37,10 +31,6 @@ export async function fetchHazards(): Promise<Hazard[]> {
   return (data ?? []) as Hazard[];
 }
 
-async function getUserId(sb) {
-  const { data } = await sb.auth.getUser();
-  return data?.user?.id || null;
-}
 export async function createHazard(input: {
   latitude: number;
   longitude: number;
@@ -53,8 +43,8 @@ export async function createHazard(input: {
     latitude: input.latitude,
     longitude: input.longitude,
     type: input.type,
-    severity: severityToDB(input.severity),
-    status: "REPORTED",
+    severity: input.severity,
+    status: "reported",
   };
 
   if (!sb) return hazard;
@@ -76,7 +66,7 @@ export async function resolveHazard(id: string) {
   const sb = requireSupabase();
   if (!sb) return;
 
-  const { error } = await sb.from("hazards").update({ status: "RESOLVED" }).eq("id", id);
+  const { error } = await sb.from("hazards").update({ status: "resolved" }).eq("id", id);
   if (error) throw error;
 }
 
