@@ -60,14 +60,6 @@ export default function LGUMap() {
 
   const [hazards, setHazards] = useState<Hazard[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [isMutating, setIsMutating] = useState(false);  const [userCoord, setUserCoord] =
-    useState<{ latitude: number; longitude: number } | null>(null);
-
-  const [hazards, setHazards] = useState<Hazard[]>([]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [isMutating, setIsMutating] = useState(false);
-
-  // Center-pin placement mode (LOCKED)
   const [placementMode, setPlacementMode] = useState(false);
   const [severity, setSeverity] = useState<1 | 2 | 3>(2);
   const [type, setType] = useState<HazardType>("pothole");
