@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { View, Text, Pressable, Dimensions, Platform, StyleSheet } from "react-native";
+import { View, Text, Pressable, Dimensions, Platform } from "react-native";
 import MapView, { Marker, Region, MapPressEvent } from "react-native-maps";
-import { PROVIDER_GOOGLE } from "react-native-maps";
 import * as Location from "expo-location";
 import {
   fetchHazards,
@@ -53,44 +52,6 @@ function shortTypeLabel(t: string) {
 
 /* -------------------- COMPONENT -------------------- */
 
-
-
-function normSeverity(v: any): 1 | 2 | 3 {
-  if (v === 3 || String(v).toUpperCase() === "HIGH") return 3;
-  if (v === 2 || String(v).toUpperCase().startsWith("MED")) return 2;
-  return 1;
-}
-
-
-function LGUImpactMarker({
-  severity,
-  selected,
-}: {
-  severity: number;
-  selected: boolean;
-}) {
-  const size = selected ? 28 : 22;
-  const color =
-    severity === 3 ? "#dc2626" :
-    severity === 2 ? "#f59e0b" :
-    "#16a34a";
-
-  return (
-    <View
-      style={{
-        width: size,
-        height: size,
-        borderRadius: size / 2,
-        backgroundColor: color,
-        borderWidth: 3,
-        borderColor: "#0b1220",
-        opacity: selected ? 1 : 0.85,
-      }}
-    />
-  );
-}
-
-
 export default function LGUMap() {
   const mapRef = useRef<MapView | null>(null);
 
@@ -104,9 +65,6 @@ export default function LGUMap() {
 
   // Center-pin placement mode (LOCKED)
   const [placementMode, setPlacementMode] = useState(false);
-
-  // GOALSS compatibility alias (render tree expects `placing`)
-  const placing = placementMode;
   const [severity, setSeverity] = useState<1 | 2 | 3>(2);
   const [type, setType] = useState<HazardType>("pothole");
 
@@ -127,8 +85,8 @@ export default function LGUMap() {
 
   async function safeReloadHazards() {
     try {
-      const next = (await fetchHazards()).map(h => ({ ...h, severity: Number(h.severity) }));
-      setHazards(Array.isArray(next) ? next.map(h => ({ ...h, status: String(h.status).toLowerCase() })) : []);
+      const next = await fetchHazards();
+      setHazards(Array.isArray(next) ? next : []);
     } catch (e) {
       console.warn("[LGUMap] fetchHazards failed", e);
       setHazards([]);
@@ -257,6 +215,7 @@ export default function LGUMap() {
       longitudeDelta: 0.06,
     };
 
+    setRegion(r);
     mapRef.current.animateToRegion(r, 350);
   }
 
@@ -294,8 +253,17 @@ export default function LGUMap() {
 
   const topBar = (
     <View
-      pointerEvents="box-none"
-      style={{ position: "absolute", top: 0, left: 0, right: 0 }}
+      style={{
+        position: "absolute",
+        top: 12,
+        left: 12,
+        right: 12,
+        padding: 10,
+        borderRadius: 14,
+        backgroundColor: "rgba(2,6,23,0.74)",
+        borderWidth: 1,
+        borderColor: "rgba(255,255,255,0.12)",
+      }}
     >
       <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
         <Text style={{ color: "white", fontWeight: "900", letterSpacing: 0.4 }}>
@@ -657,7 +625,7 @@ export default function LGUMap() {
             </Text>
           </Pressable>
         ) : (
-          <View  />
+          <View style={{ flex: 1 }} />
         )}
 
         <Pressable
@@ -682,239 +650,41 @@ export default function LGUMap() {
 
   return (
     <View style={{ flex: 1 }}>
-      {/* DASHBOARD */}
-      <View
-        style={{
-          position: "absolute",
-          top: 0,
-          left: 0,
-          right: 0,
-          padding: 12,
-          backgroundColor: "rgba(11,18,32,0.92)",
-          zIndex: 20,
-        }}
-      >
-        <Text style={{ color: "#fff", fontWeight: "900", fontSize: 16 }}>
-          LGU HAZARD OPS
-        </Text>
-        <Text style={{ color: "#cbd5f5", marginTop: 4 }}>
-          Active: {counts.active} • Resolved: {counts.resolved}
-        </Text>
-
-        <View style={{ flexDirection: "row", gap: 8, marginTop: 8 }}>
-          <Text style={{ color: "#dc2626" }}>HIGH {counts.high}</Text>
-          <Text style={{ color: "#f59e0b" }}>MED {counts.med}</Text>
-          <Text style={{ color: "#16a34a" }}>LOW {counts.low}</Text>
-        </View>
-
-        <Pressable
-          onPress={() => setShowResolved((v) => !v)}
-          style={{
-            position: "absolute",
-            right: 12,
-            top: 12,
-            paddingHorizontal: 12,
-            paddingVertical: 6,
-            borderRadius: 10,
-            backgroundColor: "rgba(255,255,255,0.12)",
-          }}
-        >
-          <Text style={{ color: "#fff", fontWeight: "800" }}>
-            Resolved: {showResolved ? "ON" : "OFF"}
-          </Text>
-        </Pressable>
-      </View>
-
       <MapView
-        ref={mapRef}
-        provider={PROVIDER_GOOGLE}
+        ref={(r) => (mapRef.current = r)}
         style={{ flex: 1 }}
         initialRegion={region}
-        onLongPress={enterPlacingMode}
+        onLongPress={(e: MapPressEvent) => {
+          // LOCKED: long-press primary trigger
+          if (!isMutating) enterPlacingMode();
+        }}
+        showsUserLocation={true}
+        showsMyLocationButton={false}
       >
-        {visibleHazards.map((h) => (
-          <Marker
-            key={h.id}
-            coordinate={{ latitude: h.latitude, longitude: h.longitude }}
-            onPress={() => setSelectedId(h.id)}
-            anchor={{ x: 0.5, y: 0.5 }}
-          >
-            <LGUImpactMarker
-              severity={normSeverity(h.severity)}
-              selected={h.id === selectedId}
+        {visibleHazards.map((h: any) => {
+          const st = safeStatus(h);
+          const pinColor = st === "resolved" ? "#64748b" : severityColor(h.severity);
+          const opacity = st === "resolved" ? 0.25 : 1.0;
+
+          // Remount marker when status changes to avoid reuse bleed
+          const markerKey = `${h.id}-${st}`;
+
+          return (
+            <Marker
+              key={markerKey}
+              coordinate={{ latitude: h.latitude, longitude: h.longitude }}
+              pinColor={pinColor}
+              opacity={opacity}
+              tracksViewChanges={false}
+              onPress={() => onMarkerPress(String(h.id))}
             />
-          </Marker>
-        ))}
+          );
+        })}
       </MapView>
 
-      {/* RECENTER */}
-      <Pressable
-        onPress={recenter}
-        style={{
-          position: "absolute",
-          right: 16,
-          bottom: 120,
-          backgroundColor: "#0b1220",
-          padding: 14,
-          borderRadius: 30,
-          borderWidth: 1,
-          borderColor: "rgba(255,255,255,0.2)",
-        }}
-      >
-        <Text style={{ color: "#fff", fontWeight: "900" }}>◎</Text>
-      </Pressable>
-
-      {/* REPORT SHEET */}
-      {placing && (
-        <View
-          style={{
-            position: "absolute",
-            left: 12,
-            right: 12,
-            bottom: 16,
-            backgroundColor: "rgba(11,18,32,0.95)",
-            borderRadius: 18,
-            padding: 14,
-          }}
-        >
-          <Text style={{ color: "#fff", fontWeight: "900", fontSize: 16 }}>
-            REPORT HAZARD
-          </Text>
-
-          <View style={{ flexDirection: "row", gap: 8, marginTop: 10 }}>
-            {[3, 2, 1].map((s) => (
-              <Pressable
-                key={s}
-                onPress={() => setSeverity(s as Sev)}
-                style={{
-                  flex: 1,
-                  padding: 10,
-                  borderRadius: 12,
-                  backgroundColor:
-                    severity === s ? SEVERITY[s as Sev].color : "rgba(255,255,255,0.1)",
-                }}
-              >
-                <Text style={{ color: "#fff", textAlign: "center", fontWeight: "800" }}>
-                  {SEVERITY[s as Sev].label}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
-            {TYPES.map((t) => (
-              <Pressable
-                key={t}
-                onPress={() => setType(t)}
-                style={{
-                  paddingVertical: 8,
-                  paddingHorizontal: 12,
-                  borderRadius: 10,
-                  backgroundColor:
-                    type === t ? "#2563eb" : "rgba(255,255,255,0.1)",
-                }}
-              >
-                <Text style={{ color: "#fff", fontWeight: "800" }}>{t}</Text>
-              </Pressable>
-            ))}
-          </View>
-
-          <View style={{ flexDirection: "row", gap: 10, marginTop: 14 }}>
-            <Pressable
-              onPress={() => setPlacing(false)}
-              style={{
-                flex: 1,
-                padding: 14,
-                borderRadius: 14,
-                backgroundColor: "rgba(255,255,255,0.12)",
-                alignItems: "center",
-              }}
-            >
-              <Text style={{ color: "#fff", fontWeight: "900" }}>CANCEL</Text>
-            </Pressable>
-
-            <Pressable
-              onPress={confirmPlacement}
-              style={{
-                flex: 1,
-                padding: 14,
-                borderRadius: 14,
-                backgroundColor: "#16a34a",
-                alignItems: "center",
-              }}
-            >
-              <Text style={{ color: "#fff", fontWeight: "900" }}>
-                {isMutating ? "SAVING..." : "CONFIRM"}
-              </Text>
-            </Pressable>
-          </View>
-        </View>
-      )}
-
-      {/* SELECTED HAZARD SHEET */}
-      {selected && (
-        <View
-          style={{
-            position: "absolute",
-            left: 12,
-            right: 12,
-            bottom: 16,
-            backgroundColor: "rgba(11,18,32,0.95)",
-            borderRadius: 18,
-            padding: 14,
-          }}
-        >
-          <Text style={{ color: "#fff", fontWeight: "900", fontSize: 16 }}>
-            {selected.type} • {isResolved(selected) ? "RESOLVED" : "ACTIVE"} •{" "}
-            {SEVERITY[normSeverity(selected.severity)].label}
-          </Text>
-
-          <View style={{ flexDirection: "row", gap: 10, marginTop: 12 }}>
-            <Pressable
-              onPress={() => setSelectedId(null)}
-              style={{
-                flex: 1,
-                padding: 14,
-                borderRadius: 14,
-                backgroundColor: "rgba(255,255,255,0.12)",
-                alignItems: "center",
-              }}
-            >
-              <Text style={{ color: "#fff", fontWeight: "900" }}>CLOSE</Text>
-            </Pressable>
-
-            {!isResolved(selected) && (
-              <Pressable
-                onPress={doResolve}
-                style={{
-                  flex: 1,
-                  padding: 14,
-                  borderRadius: 14,
-                  backgroundColor: "#16a34a",
-                  alignItems: "center",
-                }}
-              >
-                <Text style={{ color: "#fff", fontWeight: "900" }}>RESOLVE</Text>
-              </Pressable>
-            )}
-          </View>
-
-          <Pressable
-            onPress={doDelete}
-            style={{
-              marginTop: 10,
-              padding: 14,
-              borderRadius: 14,
-              backgroundColor: "#dc2626",
-              alignItems: "center",
-            }}
-          >
-            <Text style={{ color: "#fff", fontWeight: "900" }}>
-              DELETE (INVALID / DUPLICATE ONLY)
-            </Text>
-          </Pressable>
-        </View>
-      )}
+      {topBar}
+      {recenterBtn}
+      {placementMode ? placingOverlay : selected ? selectedCard : bottomReport}
     </View>
   );
 }
