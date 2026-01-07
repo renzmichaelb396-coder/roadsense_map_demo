@@ -54,9 +54,13 @@ function shortTypeLabel(t: string) {
 
 export default function LGUMap() {
   const mapRef = useRef<MapView | null>(null);
-    provider={PROVIDER_GOOGLE}
+
   const [region, setRegion] = useState<Region>(DEFAULT_REGION);
-  const [userCoord, setUserCoord] =
+  const [userCoord, setUserCoord] = useState<{ latitude: number; longitude: number } | null>(null);
+
+  const [hazards, setHazards] = useState<Hazard[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [isMutating, setIsMutating] = useState(false);  const [userCoord, setUserCoord] =
     useState<{ latitude: number; longitude: number } | null>(null);
 
   const [hazards, setHazards] = useState<Hazard[]>([]);
