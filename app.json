@@ -11,15 +11,31 @@
       "resizeMode": "contain",
       "backgroundColor": "#000000"
     },
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.rbbrenz.roadsensemvp"
     },
     "android": {
+      "config": {
+        "googleMaps": {
+          "apiKey": "YOUR_REAL_KEY_HERE"
+        }
+      },
       "permissions": [
         "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION"
-      ]
+      ],
+      "package": "com.rbbrenz.roadsensemvp"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "6fe99bf7-ee02-4fc1-9164-3f00abe77805"
+      }
     }
   }
 }

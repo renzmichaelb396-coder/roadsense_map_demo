@@ -1,29 +1,24 @@
-import 'dotenv/config';
 
-export default {
-  name: 'RoadSense',
-  slug: 'roadsense',
-  scheme: 'roadsense',
+export default ({ config }) => {
+  if (!process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY) {
+    throw new Error("❌ GOOGLE MAPS API KEY NOT LOADED");
+  }
 
-  icon: './assets/icon.png',
-
-  splash: {
-    image: './assets/splash.png',
-    resizeMode: 'contain',
-    backgroundColor: '#ffffff',
-  },
-
-  android: {
-    package: 'ph.roadsense.app',
-    config: {
-      googleMaps: {
-        apiKey: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY,
+  return {
+    ...config,
+    name: "roadsense-mvp",
+    slug: "roadsense-mvp",
+    android: {
+      ...config.android,
+      package: "com.rbbrenz.roadsensemvp",
+      config: {
+        googleMaps: {
+          apiKey: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY,
+        },
       },
     },
-  },
-
-  extra: {
-    supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL,
-    supabaseAnonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY,
-  },
+    plugins: [
+      "expo-build-properties"
+    ],
+  };
 };

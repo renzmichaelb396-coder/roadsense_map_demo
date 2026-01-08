@@ -1,1 +1,1 @@
-export { default } from "../lgu/map";
+export { default } from "../lgu/map.base";
