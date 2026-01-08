@@ -8,7 +8,7 @@ import {
   resolveHazard,
   deleteHazard,
   Hazard,
-} from "@/lib/hazards";
+} from "../../lib/hazards";
 
 /* -------------------- LGU OPS CONFIG -------------------- */
 
