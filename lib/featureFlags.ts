@@ -5,5 +5,5 @@
  * Locked features must not be toggled casually
  */
 export const FEATURES = {
-  USE_SUPABASE_HAZARDS: false,
+  USE_SUPABASE_HAZARDS: true,
 };
