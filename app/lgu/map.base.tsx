@@ -8,7 +8,7 @@ import {
   resolveHazard,
   deleteHazard,
   Hazard,
-} from "../../lib/hazards";
+} from "@/lib/hazards";
 
 /* -------------------- LGU OPS CONFIG -------------------- */
 
@@ -36,6 +36,20 @@ const HAZARD_TYPES = [
 type HazardType = (typeof HAZARD_TYPES)[number]["key"];
 
 function severityColor(sev: number) {
+
+function normalizeSeverity(sev) {
+
+function severityToDB(sev) {
+  if (sev === 3) return "HIGH";
+  if (sev === 2) return "MEDIUM";
+  return "LOW";
+}
+  if (sev === 1 || sev === 2 || sev === 3) return sev;
+  if (sev === "LOW") return 1;
+  if (sev === "MEDIUM") return 2;
+  if (sev === "HIGH") return 3;
+  return 1;
+}
   if (sev === 3) return "#ef4444";
   if (sev === 2) return "#f59e0b";
   return "#10b981";
@@ -114,7 +128,6 @@ export default function LGUMap() {
       } catch {
         // keep default region
       }
-      await safeReloadHazards();
     })();
   }, []);
 
@@ -147,25 +160,28 @@ export default function LGUMap() {
       setIsMutating(true);
 
       const { width, height } = Dimensions.get("window");
-      // Best-effort: center of the screen. Good enough for ops.
       const coord = await mapRef.current.coordinateForPoint({
         x: width / 2,
         y: height / 2,
       });
 
       await createHazard({
+
         latitude: coord.latitude,
         longitude: coord.longitude,
-        severity,
         type,
-      });
+        severity: typeof severityToDB === "function" ? severityToDB(severity) : severity,
+});
 
       await safeReloadHazards();
-    } catch (e) {
+
+      // refresh from DB so UI + counts update immediately
+
+      setPlacementMode(false);
+    } catch (e: any) {
       console.warn("[LGUMap] confirmPlacement failed", e);
     } finally {
       setIsMutating(false);
-      setPlacementMode(false);
     }
   }
 
@@ -179,7 +195,6 @@ export default function LGUMap() {
     try {
       setIsMutating(true);
       await resolveHazard(String((selected as any).id));
-      await safeReloadHazards();
     } catch (e) {
       console.warn("[LGUMap] resolveSelected failed", e);
     } finally {
@@ -196,10 +211,8 @@ export default function LGUMap() {
     try {
       setIsMutating(true);
       await deleteHazard(id);
-      await safeReloadHazards();
     } catch (e) {
       console.warn("[LGUMap] deleteSelected failed", e);
-      await safeReloadHazards();
     } finally {
       setIsMutating(false);
     }
@@ -215,7 +228,6 @@ export default function LGUMap() {
       longitudeDelta: 0.06,
     };
 
-    setRegion(r);
     mapRef.current.animateToRegion(r, 350);
   }
 
@@ -653,7 +665,7 @@ export default function LGUMap() {
       <MapView
         ref={(r) => (mapRef.current = r)}
         style={{ flex: 1 }}
-        initialRegion={region}
+        initialRegion={DEFAULT_REGION}
         onLongPress={(e: MapPressEvent) => {
           // LOCKED: long-press primary trigger
           if (!isMutating) enterPlacingMode();
@@ -661,19 +673,27 @@ export default function LGUMap() {
         showsUserLocation={true}
         showsMyLocationButton={false}
       >
-        {visibleHazards.map((h: any) => {
+        {useMemo(() => {
+          return visibleHazards.filter(
+            (h: any) =>
+              Number.isFinite(Number(h?.latitude)) &&
+              Number.isFinite(Number(h?.longitude))
+          );
+        }, [visibleHazards]).map((h: any) => {
           const st = safeStatus(h);
           const pinColor = st === "resolved" ? "#64748b" : severityColor(h.severity);
           const opacity = st === "resolved" ? 0.25 : 1.0;
 
-          // Remount marker when status changes to avoid reuse bleed
           const markerKey = `${h.id}-${st}`;
 
           return (
             <Marker
               key={markerKey}
-              coordinate={{ latitude: h.latitude, longitude: h.longitude }}
-              pinColor={pinColor}
+              coordinate={{
+                latitude: Number(h.latitude),
+                longitude: Number(h.longitude),
+              }}
+              pinColor={h.severity === 3 ? "red" : h.severity === 2 ? "orange" : "green"}
               opacity={opacity}
               tracksViewChanges={false}
               onPress={() => onMarkerPress(String(h.id))}
