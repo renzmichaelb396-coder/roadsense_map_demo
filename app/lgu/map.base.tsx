@@ -36,20 +36,6 @@ const HAZARD_TYPES = [
 type HazardType = (typeof HAZARD_TYPES)[number]["key"];
 
 function severityColor(sev: number) {
-
-function normalizeSeverity(sev) {
-
-function severityToDB(sev) {
-  if (sev === 3) return "HIGH";
-  if (sev === 2) return "MEDIUM";
-  return "LOW";
-}
-  if (sev === 1 || sev === 2 || sev === 3) return sev;
-  if (sev === "LOW") return 1;
-  if (sev === "MEDIUM") return 2;
-  if (sev === "HIGH") return 3;
-  return 1;
-}
   if (sev === 3) return "#ef4444";
   if (sev === 2) return "#f59e0b";
   return "#10b981";
@@ -99,8 +85,8 @@ export default function LGUMap() {
 
   async function safeReloadHazards() {
     try {
-      const next = await fetchHazards();
-      setHazards(Array.isArray(next) ? next : []);
+      const next = (await fetchHazards()).map(h => ({ ...h, severity: Number(h.severity) }));
+      setHazards(Array.isArray(next) ? next.map(h => ({ ...h, status: String(h.status).toLowerCase() })) : []);
     } catch (e) {
       console.warn("[LGUMap] fetchHazards failed", e);
       setHazards([]);
@@ -128,6 +114,7 @@ export default function LGUMap() {
       } catch {
         // keep default region
       }
+      await safeReloadHazards();
     })();
   }, []);
 
@@ -160,28 +147,25 @@ export default function LGUMap() {
       setIsMutating(true);
 
       const { width, height } = Dimensions.get("window");
+      // Best-effort: center of the screen. Good enough for ops.
       const coord = await mapRef.current.coordinateForPoint({
         x: width / 2,
         y: height / 2,
       });
 
       await createHazard({
-
         latitude: coord.latitude,
         longitude: coord.longitude,
+        severity,
         type,
-        severity: typeof severityToDB === "function" ? severityToDB(severity) : severity,
-});
+      });
 
       await safeReloadHazards();
-
-      // refresh from DB so UI + counts update immediately
-
-      setPlacementMode(false);
-    } catch (e: any) {
+    } catch (e) {
       console.warn("[LGUMap] confirmPlacement failed", e);
     } finally {
       setIsMutating(false);
+      setPlacementMode(false);
     }
   }
 
@@ -195,6 +179,7 @@ export default function LGUMap() {
     try {
       setIsMutating(true);
       await resolveHazard(String((selected as any).id));
+      await safeReloadHazards();
     } catch (e) {
       console.warn("[LGUMap] resolveSelected failed", e);
     } finally {
@@ -211,8 +196,10 @@ export default function LGUMap() {
     try {
       setIsMutating(true);
       await deleteHazard(id);
+      await safeReloadHazards();
     } catch (e) {
       console.warn("[LGUMap] deleteSelected failed", e);
+      await safeReloadHazards();
     } finally {
       setIsMutating(false);
     }
@@ -241,7 +228,7 @@ export default function LGUMap() {
     return hazardsStable.filter((h: any) => {
       const st = safeStatus(h);
       if (!showResolved && st === "resolved") return false;
-      if (!severityFilter[h.severity]) return false;
+      if (!severityFilter[Number(h.severity)]) return false;
       if (!typeFilter[h.type as HazardType]) return false;
       return true;
     });
@@ -693,11 +680,39 @@ export default function LGUMap() {
                 latitude: Number(h.latitude),
                 longitude: Number(h.longitude),
               }}
-              pinColor={h.severity === 3 ? "red" : h.severity === 2 ? "orange" : "green"}
               opacity={opacity}
-              tracksViewChanges={false}
+              tracksViewChanges={true}
               onPress={() => onMarkerPress(String(h.id))}
-            />
+            >
+              <View
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 18,
+                  backgroundColor: st === "resolved" ? "#64748b" : severityColor(h.severity),
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderWidth: 2,
+                  borderColor: "rgba(0,0,0,0.35)",
+                }}
+              >
+                <Text
+                  style={{
+                    color: "white",
+                    fontWeight: "900",
+                    fontSize: 18,
+                  }}
+                >
+                  {{
+                    pothole: "P",
+                    debris: "D",
+                    construction: "R",
+                    flood: "F",
+                    crack: "C",
+                  }[h.type] || "?"}
+                </Text>
+              </View>
+            </Marker>
           );
         })}
       </MapView>
